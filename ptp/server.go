@@ -20,6 +20,7 @@ type serverMsg struct {
 	ClockIdentity  uint64
 }
 type Server struct {
+	Logger             *log.Logger
 	genConn, eventConn *net.UDPConn
 	clock              *VirtualClock
 	identity           uint64
@@ -44,7 +45,9 @@ func Listen(clock *VirtualClock, ip net.IP, identity uint64) (*Server, error) {
 	return &Server{genConn: g, eventConn: e, clock: clock, identity: identity, measurements: newMeasurements()}, nil
 }
 func (s *Server) Close() { s.genConn.Close(); s.eventConn.Close() }
-func (s *Server) Serve(ctx context.Context) {
+func (s *Server) Serve(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	failures := make(chan error, 2)
 	defer s.Close()
 	stop := context.AfterFunc(ctx, s.Close)
 	defer stop()
@@ -56,6 +59,7 @@ func (s *Server) Serve(ctx context.Context) {
 			for {
 				n, src, err := conn.ReadFromUDP(b[:])
 				if err != nil {
+					failures <- err
 					return
 				}
 				stamp := time.Now()
@@ -71,12 +75,17 @@ func (s *Server) Serve(ctx context.Context) {
 			}
 		})
 	}
-	defer wg.Wait()
+	defer func() { cancel(); s.Close(); wg.Wait() }()
 	var generation uint64
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return nil
+		case err := <-failures:
+			if ctx.Err() != nil {
+				return nil
+			}
+			return fmt.Errorf("PTP receive: %w", err)
 		case p := <-packets:
 			gen, ok := s.accept(p.Src.IP, p.ClockIdentity)
 			if !ok {
@@ -110,7 +119,7 @@ func (s *Server) Serve(ctx context.Context) {
 				s.measurements.addDelayResp(x.SequenceID, x.ReceiveTimestamp)
 				if result, err := s.measurements.latest(); err == nil {
 					if result.Offset > 100*time.Millisecond || result.Offset < -100*time.Millisecond {
-						log.Printf("PTP correction offset=%v delay=%v", result.Offset, result.Delay)
+						s.logf("PTP correction offset=%v delay=%v", result.Offset, result.Delay)
 					}
 					s.applyOffset(gen, result.Offset)
 				}
@@ -198,7 +207,7 @@ func (s *Server) SetPeers(owner any, peers []net.IP, id uint64) {
 	s.allowed = peerMap(peers)
 	if id != 0 {
 		if s.master != id {
-			log.Printf("PTP master selected clock=%016x", id)
+			s.logf("PTP master selected clock=%016x", id)
 		}
 		s.master = id
 	}
@@ -234,4 +243,12 @@ func (s *Server) applyOffset(generation uint64, offset time.Duration) bool {
 	}
 	s.clock.Offset(offset)
 	return true
+}
+
+func (s *Server) logf(format string, args ...any) {
+	logger := s.Logger
+	if logger == nil {
+		logger = log.Default()
+	}
+	logger.Printf(format, args...)
 }

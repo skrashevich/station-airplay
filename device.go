@@ -1,4 +1,4 @@
-package main
+package stationairplay
 
 import "github.com/skrashevich/station-airplay/globals"
 

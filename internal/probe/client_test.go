@@ -27,13 +27,12 @@ func TestProbeExercisesEncryptedRTSPAndMedia(t *testing.T) {
 	t.Setenv("STATION_PROBE_HELPER", "1")
 	capture := t.TempDir() + "/pcm"
 	t.Setenv("STATION_PROBE_FILE", capture)
-	var err error
-	homekit.Server, err = homekit.NewServer("AA:BB:CC:DD:EE:FF", t.TempDir(), []string{"127.0.0.1"})
+	server, err := homekit.NewServer("AA:BB:CC:DD:EE:FF", t.TempDir(), []string{"127.0.0.1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	homekit.Server.EventPort = 60003
-	homekit.Device = homekit.NewAccessory("AA:BB:CC:DD:EE:FF", "dde0cfc9-a2dc-4454-a706-957eae462cce", globals.NewFeatures().Set(9), homekit.Server.Device.PublicKey())
+	server.EventPort = 60003
+	accessory := homekit.NewAccessory("AA:BB:CC:DD:EE:FF", "dde0cfc9-a2dc-4454-a706-957eae462cce", globals.NewFeatures().Set(9), server.Device.PublicKey())
 	exe, _ := os.Executable()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -42,7 +41,7 @@ func TestProbeExercisesEncryptedRTSPAndMedia(t *testing.T) {
 	l, _ := net.Listen("tcp", "127.0.0.1:0")
 	done := make(chan error, 1)
 	go func() {
-		done <- rtsp.Serve(ctx, l, func() (rtsp.Handler, error) { return handlers.NewRstpHandler("probe", p) })
+		done <- rtsp.Serve(ctx, l, func() (rtsp.Handler, error) { return handlers.NewRstpHandler(server, accessory, p) })
 	}()
 	if err := Run(ctx, l.Addr().String(), "../../codec/testdata/tone.aac", -30); err != nil {
 		t.Fatal(err)

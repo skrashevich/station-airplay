@@ -85,5 +85,3 @@ func (t *Accessory) ToRecords() []string {
 	return results
 
 }
-
-var Device *Accessory

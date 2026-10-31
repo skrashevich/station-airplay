@@ -45,8 +45,9 @@ identity/storage persistence, and installer ownership/update/uninstall.
    signal-handler test proves cleanup is reached. A subsequent finite Midi probe
    exited with no remaining dmix shared-memory segments.
 
-Installation is contained under /data/opt/station-airplay. Boot hooks have not
-been enabled on either device; no vendor services or firmware settings were changed.
+The original standalone validation predates optional boot integration. The
+inittab implementation is retained separately in cdx/inittab-autostart. The
+importable library itself changes no boot configuration or firmware services.
 
 ## Limits
 
@@ -54,3 +55,22 @@ No sample-accurate multiroom latency/drift measurement, extended-duration soak,
 other Station models, alternate iPhone applications/transports, or ARMv7 runtime
 validation has been completed. Synthetic sender tests use a deliberate past-time
 anchor and do not by themselves validate live clock synchronization.
+
+## Embedded API and remote controls
+
+The module root is importable; the standalone command moved to cmd/station-airplay.
+Lifecycle tests cover concurrent/idempotent starts, startup rollback and retry,
+application cancellation, bounded Stop waiting, runtime failure reporting and
+exclusive resource cleanup before reuse. HomeKit state is receiver-scoped.
+
+Encrypted event tests independently derive keys, verify sender commands and
+acknowledgments, group destination archives, bounded input, cancellation,
+nonce progression, fragmented records and same-peer ownership conflicts.
+Regressions also cover paused media lifetime without idle expiry, local gain
+surviving partial teardown/re-setup, cross-owner volume safety and the AirPlay
+slider's linear -30..0 dB convention. Source restart is explicitly unsupported.
+
+Quasar Bridge integration recognizes enable/disable/status without LLM calls and
+routes generic media controls only while an AirPlay sender owns the session.
+Actual voice/iPhone validation of these new controls is separate from earlier
+standalone playback evidence and will be recorded after hardware testing.

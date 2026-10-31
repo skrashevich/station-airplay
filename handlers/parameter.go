@@ -12,7 +12,7 @@ import (
 )
 
 func (r *Rstp) OnGetParameterWeb(req *rtsp.Request) (*rtsp.Response, error) {
-	return &rtsp.Response{StatusCode: rtsp.StatusOK, Header: rtsp.Header{"Content-Type": {"text/parameters"}}, Body: []byte(fmt.Sprintf("volume: %.6f\r\n", r.volume))}, nil
+	return &rtsp.Response{StatusCode: rtsp.StatusOK, Header: rtsp.Header{"Content-Type": {"text/parameters"}}, Body: []byte(fmt.Sprintf("volume: %.6f\r\n", r.currentVolume()))}, nil
 }
 func (r *Rstp) OnSetParameterWeb(req *rtsp.Request) (*rtsp.Response, error) {
 	scanner := bufio.NewScanner(bytes.NewReader(req.Body))
@@ -33,4 +33,14 @@ func (r *Rstp) OnSetParameterWeb(req *rtsp.Request) (*rtsp.Response, error) {
 		}
 	}
 	return &rtsp.Response{StatusCode: rtsp.StatusOK}, nil
+}
+
+func (r *Rstp) currentVolume() float64 {
+	owner := r.player.Current()
+	for _, s := range r.streams {
+		if s == owner {
+			return r.player.Volume()
+		}
+	}
+	return r.volume
 }

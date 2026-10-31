@@ -4,7 +4,6 @@ package rtsp
 import (
 	"bufio"
 	"fmt"
-	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -81,7 +80,7 @@ func (h *Header) read(rb *bufio.Reader) error {
 		}
 		err = rb.UnreadByte()
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		byts, err = readBytesLimited(rb, '\r', headerMaxValueLength)

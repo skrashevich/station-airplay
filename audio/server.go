@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/skrashevich/station-airplay/codec"
 	"io"
-	"log"
 	"math"
 	"net"
 	"sync"
@@ -16,6 +15,8 @@ import (
 
 type sequenceRange struct{ from, until uint32 }
 type Server struct {
+	RemoteControl                func(context.Context, string) error
+	NotifyVolume                 func(context.Context, float64) error
 	player                       *Player
 	ctx                          context.Context
 	cancel                       context.CancelFunc
@@ -86,7 +87,7 @@ func (s *Server) receive(l net.Listener) {
 		c, err = l.Accept()
 		if err != nil {
 			if s.ctx.Err() == nil {
-				log.Printf("audio accept: %v", err)
+				s.player.Logf("audio accept: %v", err)
 			}
 			s.Close()
 			return
@@ -107,11 +108,11 @@ func (s *Server) receive(l net.Listener) {
 	s.mu.Unlock()
 	defer c.Close()
 	for {
-		c.SetReadDeadline(time.Now().Add(60 * time.Second))
+		// The authenticated control connection owns lifetime, including long pauses.
 		raw, err := ReadPacket(c)
 		if err != nil {
 			if err != io.EOF && s.ctx.Err() == nil {
-				log.Printf("audio input: %v", err)
+				s.player.Logf("audio input: %v", err)
 				s.Close()
 			}
 			return
@@ -120,7 +121,7 @@ func (s *Server) receive(l net.Listener) {
 		// leave predecoded samples or overlap history from the old timeline.
 		f, err := ParseFrame(s.sharedKey, raw)
 		if err != nil {
-			log.Printf("audio input: %v", err)
+			s.player.Logf("audio input: %v", err)
 			s.Close()
 			return
 		}
@@ -301,7 +302,7 @@ func (s *Server) play() {
 		until := anchor.Sub(s.player.Clock.Now()) + time.Duration(int64(int32(f.Timestamp-anchorRTP)))*time.Second/time.Duration(s.rate) - s.player.OutputDelay
 		if until > 0 {
 			if until > time.Second && time.Now().After(nextTimingLog) {
-				log.Printf("audio timing wait=%v queued=%d frame=%d anchor=%d anchor_sec=%d clock_sec=%d", until.Truncate(time.Millisecond), s.buffer.Len(), f.Timestamp, anchorRTP, anchor.Unix(), s.player.Clock.Now().Unix())
+				s.player.Logf("audio timing wait=%v queued=%d frame=%d anchor=%d anchor_sec=%d clock_sec=%d", until.Truncate(time.Millisecond), s.buffer.Len(), f.Timestamp, anchorRTP, anchor.Unix(), s.player.Clock.Now().Unix())
 				nextTimingLog = time.Now().Add(5 * time.Second)
 			}
 			timer := time.NewTimer(min(until, 100*time.Millisecond))
@@ -328,7 +329,7 @@ func (s *Server) play() {
 		}
 		pcm, err := decoder.Decode(f.encodedData)
 		if err != nil {
-			log.Printf("AAC decode: %v", err)
+			s.player.Logf("AAC decode: %v", err)
 			return
 		}
 		s.mu.Lock()
@@ -342,7 +343,7 @@ func (s *Server) play() {
 			o, err := codec.OpenOutput(s.ctx, opts)
 			if err != nil {
 				s.mu.Unlock()
-				log.Printf("audio output: %v", err)
+				s.player.Logf("audio output: %v", err)
 				return
 			}
 			s.output = o
@@ -365,7 +366,7 @@ func (s *Server) play() {
 		s.mu.Unlock()
 		if err != nil && !stale {
 			if s.ctx.Err() == nil {
-				log.Printf("audio output: %v", err)
+				s.player.Logf("audio output: %v", err)
 			}
 			return
 		}
@@ -381,6 +382,19 @@ func (s *Server) drainOutput() {
 	ctx, cancel := context.WithTimeout(s.ctx, 2*time.Second)
 	defer cancel()
 	if err := o.Drain(ctx); err != nil && s.ctx.Err() == nil {
-		log.Printf("audio drain: %v", err)
+		s.player.Logf("audio drain: %v", err)
 	}
 }
+
+// Wait joins both stream workers after Close; it does not initiate shutdown.
+func (s *Server) Wait() {
+	<-s.done
+	s.mu.Lock()
+	started := s.started
+	s.mu.Unlock()
+	if started {
+		<-s.inputDone
+	}
+}
+
+func (s *Server) Context() context.Context { return s.ctx }

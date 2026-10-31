@@ -4,13 +4,15 @@ package homekit
 import (
 	"github.com/brutella/hc/db"
 	"github.com/brutella/hc/hap"
+	"github.com/skrashevich/station-airplay/event"
 	"path/filepath"
 )
 
 // reference : https://github.com/ejurgensen/pair_ap
 const airportExpressHardcodedPin = "3939"
 
-type server struct {
+type Server struct {
+	Events    *event.Hub
 	Context   hap.Context
 	Database  db.Database
 	Device    hap.SecuredDevice
@@ -19,7 +21,7 @@ type server struct {
 	EventPort uint16
 }
 
-func NewServer(macAddress string, deviceName string, ips []string) (*server, error) {
+func NewServer(macAddress string, deviceName string, ips []string) (*Server, error) {
 
 	storage, err := NewPrivateStorage(filepath.Join(deviceName, "pairing"))
 	if err != nil {
@@ -32,12 +34,10 @@ func NewServer(macAddress string, deviceName string, ips []string) (*server, err
 		return nil, err
 	}
 
-	return &server{Context: hap.NewContextForSecuredDevice(device),
+	return &Server{Events: event.NewHub(), Context: hap.NewContextForSecuredDevice(device),
 		Database: database,
 		Device:   device,
 		Name:     deviceName,
 		Ips:      ips,
 	}, nil
 }
-
-var Server *server

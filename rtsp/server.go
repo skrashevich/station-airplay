@@ -28,12 +28,17 @@ func (c *Conn) Close() error          { return c.c.Close() }
 func (c *Conn) SetNetConn(n net.Conn) { c.c = n }
 
 // Serve creates isolated protocol handlers and buffers for every connection.
-func Serve(ctx context.Context, l net.Listener, factory func() (Handler, error)) error {
+func Serve(ctx context.Context, l net.Listener, factory func() (Handler, error), logs ...*log.Logger) error {
+	logger := log.Default()
+	if len(logs) > 0 && logs[0] != nil {
+		logger = logs[0]
+	}
+	ctx, cancel := context.WithCancel(ctx)
 	var wg sync.WaitGroup
 	slots := make(chan struct{}, 32)
 	stop := context.AfterFunc(ctx, func() { l.Close() })
 	defer stop()
-	defer wg.Wait()
+	defer func() { cancel(); l.Close(); wg.Wait() }()
 	for {
 		raw, err := l.Accept()
 		if err != nil {
@@ -55,7 +60,7 @@ func Serve(ctx context.Context, l net.Listener, factory func() (Handler, error))
 			defer stop()
 			h, err := factory()
 			if err != nil {
-				log.Printf("RTSP handler: %v", err)
+				logger.Printf("RTSP handler: %v", err)
 				return
 			}
 			conn := &Conn{c: raw}
@@ -66,18 +71,26 @@ func Serve(ctx context.Context, l net.Listener, factory func() (Handler, error))
 			}
 			br, bw := bufio.NewReaderSize(conn.c, 4096), bufio.NewWriterSize(conn.c, 4096)
 			for {
-				conn.c.SetReadDeadline(time.Now().Add(5 * time.Minute))
+				timeout := 5 * time.Minute
+				if idle, ok := h.(interface{ ReadTimeout() time.Duration }); ok {
+					timeout = idle.ReadTimeout()
+				}
+				deadline := time.Time{}
+				if timeout > 0 {
+					deadline = time.Now().Add(timeout)
+				}
+				conn.c.SetReadDeadline(deadline)
 				req := new(Request)
 				if err := req.Read(br); err != nil {
 					if !errors.Is(err, io.EOF) && ctx.Err() == nil {
-						log.Printf("RTSP read: %v", err)
+						logger.Printf("RTSP read: %v", err)
 					}
 					return
 				}
 				h.OnRequest(conn, req)
 				resp, err := h.Handle(conn, req)
 				if err != nil {
-					log.Printf("RTSP handle: %v", err)
+					logger.Printf("RTSP handle: %v", err)
 					if resp == nil {
 						return
 					}

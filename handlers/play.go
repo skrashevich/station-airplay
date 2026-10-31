@@ -5,7 +5,6 @@ import (
 	"github.com/skrashevich/station-airplay/audio"
 	"github.com/skrashevich/station-airplay/rtsp"
 	"howett.net/plist"
-	"log"
 	"math/bits"
 	"time"
 )
@@ -43,7 +42,7 @@ func (r *Rstp) OnSetRateAnchorTime(req *rtsp.Request) (*rtsp.Response, error) {
 	if v.Rate == 0 {
 		s.SetRate0()
 	} else {
-		log.Printf("audio anchor rate=%d rtp=%d clock=%016x seconds=%d", v.Rate, v.RtpTime, v.ClockIdentity, v.Seconds)
+		r.logger.Printf("audio anchor rate=%d rtp=%d clock=%016x seconds=%d", v.Rate, v.RtpTime, v.ClockIdentity, v.Seconds)
 		r.clockID = v.ClockIdentity
 		s.SetTimingPeers(r.peers, r.clockID)
 		s.SetRateAnchorTime(v.RtpTime, v.StartTime())
@@ -58,9 +57,12 @@ func (r *Rstp) OnTeardownWeb(req *rtsp.Request) (*rtsp.Response, error) {
 		}
 	}
 	if s := r.streams[req.Path]; s != nil {
+		r.volume = r.currentVolume()
 		s.Close()
+		s.Wait()
 		if _, partial := body["streams"]; partial {
 			replacement := audio.NewServer(r.player)
+			r.attachRemote(replacement)
 			replacement.PeerIP = r.peerIP
 			r.streams[req.Path] = replacement
 		} else {

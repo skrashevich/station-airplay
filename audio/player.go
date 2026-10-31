@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/skrashevich/station-airplay/codec"
 	"github.com/skrashevich/station-airplay/ptp"
+	"log"
 	"math"
 	"net"
 	"sync"
@@ -14,6 +15,7 @@ import (
 )
 
 type Player struct {
+	Logger      *log.Logger
 	Context     context.Context
 	Output      codec.OutputOptions
 	Clock       *ptp.VirtualClock
@@ -27,7 +29,7 @@ type Player struct {
 }
 
 func NewPlayer(ctx context.Context, clock *ptp.VirtualClock, opts codec.OutputOptions) *Player {
-	p := &Player{Context: ctx, Clock: clock, Output: opts, OutputDelay: 160 * time.Millisecond}
+	p := &Player{Logger: log.Default(), Context: ctx, Clock: clock, Output: opts, OutputDelay: 160 * time.Millisecond}
 	p.SetVolume(-20)
 	return p
 }
@@ -61,6 +63,24 @@ func (p *Player) Gain() float64 { return math.Float64frombits(p.gain.Load()) }
 
 func (p *Player) Volume() float64 { return math.Float64frombits(p.volume.Load()) }
 
+// Current returns the sender that owns this player's audio, if any.
+func (p *Player) Current() *Server {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.owner
+}
+
+func (p *Player) PlaybackState() (connected, playing bool) {
+	s := p.Current()
+	if s == nil {
+		return false, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	connected = s.started && s.ctx.Err() == nil
+	return connected, connected && s.playing
+}
+
 func (p *Player) SetVolumeFor(s *Server, db float64) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -76,4 +96,12 @@ func (p *Player) SetTimingPeers(s *Server, peers []net.IP, id uint64) {
 	if p.owner == s && p.Timing != nil {
 		p.Timing.SetPeers(s, peers, id)
 	}
+}
+
+func (p *Player) Logf(format string, args ...any) {
+	logger := p.Logger
+	if logger == nil {
+		logger = log.Default()
+	}
+	logger.Printf(format, args...)
 }

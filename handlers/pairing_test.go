@@ -7,6 +7,7 @@ import (
 	"github.com/brutella/hc/util"
 	"github.com/skrashevich/station-airplay/audio"
 	"github.com/skrashevich/station-airplay/codec"
+	"github.com/skrashevich/station-airplay/globals"
 	"github.com/skrashevich/station-airplay/homekit"
 	"github.com/skrashevich/station-airplay/ptp"
 	"github.com/skrashevich/station-airplay/rtsp"
@@ -16,17 +17,16 @@ import (
 )
 
 func TestTransientPairSetupActivatesEncryptionAfterPlaintextM4(t *testing.T) {
-	var err error
-	homekit.Server, err = homekit.NewServer("AA:BB:CC:DD:EE:FF", t.TempDir(), []string{"127.0.0.1"})
+	server, err := homekit.NewServer("AA:BB:CC:DD:EE:FF", t.TempDir(), []string{"127.0.0.1"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	raw, peer := net.Pipe()
 	defer peer.Close()
 	conn := new(rtsp.Conn)
-	conn.SetNetConn(homekit.NewConnection(raw, homekit.Server.Context))
+	conn.SetNetConn(homekit.NewConnection(raw, server.Context))
 	defer conn.Close()
-	r, _ := NewRstpHandler("test", audio.NewPlayer(context.Background(), ptp.NewVirtualClock(0), codec.OutputOptions{}))
+	r, _ := NewRstpHandler(server, homekit.NewAccessory("AA:BB:CC:DD:EE:FF", "dde0cfc9-a2dc-4454-a706-957eae462cce", globals.NewFeatures(), server.Device.PublicKey()), audio.NewPlayer(context.Background(), ptp.NewVirtualClock(0), codec.OutputOptions{}))
 	in := util.NewTLV8Container()
 	in.SetByte(pair.TagSequence, 1)
 	in.SetByte(pair.TagPairingMethod, 0)
@@ -55,7 +55,7 @@ func TestTransientPairSetupActivatesEncryptionAfterPlaintextM4(t *testing.T) {
 	if err != nil || !client.IsServerProofValid(out.GetBytes(pair.TagProof)) {
 		t.Fatalf("bad server proof: %v", err)
 	}
-	session := homekit.Server.Context.GetSessionForConnection(conn.NetConn())
+	session := server.Context.GetSessionForConnection(conn.NetConn())
 	if session.Encrypter() != nil {
 		t.Fatal("M4 must remain plaintext")
 	}

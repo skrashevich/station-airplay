@@ -33,6 +33,44 @@ Opus is not used by this AAC transport and is not linked merely because a decode
 Live iPhone discovery and individual playback have been observed on Midi and
 Station 2. See [validation notes](docs/validation.md) for limitations and current results.
 
+## Use as a Go dependency
+
+The module root is now an importable library. The standalone command lives in
+cmd/station-airplay.
+
+    go get github.com/skrashevich/station-airplay
+
+Create one Receiver for the application's lifetime:
+
+    import airplay "github.com/skrashevich/station-airplay"
+
+    receiver, err := airplay.New(airplay.Config{
+        Name:    "My Station AirPlay",
+        DataDir: "/data/opt/my-app/airplay",
+    })
+    if err != nil {
+        return err
+    }
+    // Enable from a voice handler using the APPLICATION context:
+    if err := receiver.Start(appCtx); err != nil {
+        return err
+    }
+    // Disable later and wait for resource cleanup:
+    if err := receiver.Stop(requestCtx); err != nil {
+        return err
+    }
+
+New performs no startup I/O. Start returns after readiness and is idempotent;
+Stop waits for cleanup. Wait observes completion/errors and Status distinguishes
+enabled, connected and playing. Control sends pause/resume/stop/next/previous to
+the sender over its encrypted event channel; unavailable or unsupported controls
+return errors. SetVolume affects receiver PCM only. Imports install no signals,
+parse no flags and change no boot configuration or global logging.
+
+Keep the same DataDir to preserve pairing and disable any standalone instance
+before the embedded receiver takes its ports. See [embedding details](docs/embedding.md)
+and the [Quasar Bridge integration](https://github.com/skrashevich/quasar-bridge).
+
 ## Install on a speaker
 
 Extract the matching archive into a temporary directory on the speaker, then run:
@@ -93,8 +131,8 @@ Go 1.26 or later:
 CGO_ENABLED=0 go test ./...
 go test -race ./...
 CGO_ENABLED=0 go vet ./...
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags '-s -w' -o station-airplay .
-CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags '-s -w' -o station-airplay .
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags '-s -w' -o station-airplay ./cmd/station-airplay
+CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags '-s -w' -o station-airplay ./cmd/station-airplay
 sh scripts/install_test.sh
 ```
 
@@ -131,3 +169,7 @@ notices. AAC is the pinned LGPL-3.0 Go decoder; its license is included under
 `docs/licenses`. Module source revisions and checksums are in `go.mod`/`go.sum`.
 The PTP FollowUp/profile and timeline handling was cross-checked against the public
 Shairport Sync and NQPTP implementations. See `NOTICE` and `LICENSE`.
+
+Binary redistribution includes LGPL/GPL dependency notices and a corresponding
+source archive with vendored dependencies and offline rebuild instructions.
+See [source and rebuild information](docs/SOURCE.md).

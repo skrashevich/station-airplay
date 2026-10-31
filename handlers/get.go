@@ -2,7 +2,6 @@
 package handlers
 
 import (
-	"github.com/skrashevich/station-airplay/homekit"
 	"github.com/skrashevich/station-airplay/rtsp"
 	"howett.net/plist"
 	"strings"
@@ -63,8 +62,8 @@ func (r *Rstp) OnGetInfo(req *rtsp.Request) (*rtsp.Response, error) {
 		}
 	}
 
-	responseBody := NewGetInfoResponse(homekit.Device.Deviceid, homekit.Device.Features.ToUint64(),
-		homekit.Device.Pi.String(), homekit.Device.Psi.String(), homekit.Device.Srcvers)
+	responseBody := NewGetInfoResponse(r.accessory.Deviceid, r.accessory.Features.ToUint64(),
+		r.accessory.Pi.String(), r.accessory.Psi.String(), r.accessory.Srcvers)
 
 	responseBody.AudioLatencies[0].OutputLatencyMicros = uint64(r.player.OutputDelay / time.Microsecond)
 	if body, err := plist.Marshal(*responseBody, plist.AutomaticFormat); err == nil {

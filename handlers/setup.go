@@ -2,10 +2,10 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"github.com/skrashevich/station-airplay/audio"
 	"github.com/skrashevich/station-airplay/globals"
-	"github.com/skrashevich/station-airplay/homekit"
 	"github.com/skrashevich/station-airplay/rtsp"
 	"howett.net/plist"
 	"net"
@@ -20,6 +20,7 @@ type setupStreamRequest struct {
 	SampleRate      uint32 `plist:"sr"`
 }
 type setupRtsp struct {
+	GroupUUID      string               `plist:"groupUUID"`
 	Streams        []setupStreamRequest `plist:"streams"`
 	TimingProtocol string               `plist:"timingProtocol"`
 }
@@ -74,20 +75,34 @@ func (r *Rstp) OnSetupWeb(req *rtsp.Request) (*rtsp.Response, error) {
 	if _, err := plist.Unmarshal(req.Body, &v); err != nil {
 		return &rtsp.Response{StatusCode: rtsp.StatusBadRequest}, nil
 	}
+	r.volume = r.currentVolume()
 	if v.Streams == nil {
+		if r.server.Events != nil && len(r.eventKey) > 0 {
+			if r.eventSession == nil {
+				session, err := r.server.Events.Register(r.peerIP, r.eventKey)
+				if err != nil {
+					return &rtsp.Response{StatusCode: rtsp.StatusInternalServerError}, err
+				}
+				r.eventSession = session
+			}
+			r.eventSession.SetGroupID(v.GroupUUID)
+		}
+
 		if v.TimingProtocol != "" && v.TimingProtocol != "PTP" {
 			return &rtsp.Response{StatusCode: rtsp.StatusUnsupportedTransport}, nil
 		}
 		if old := r.streams[req.Path]; old != nil {
 			old.Close()
+			old.Wait()
 		}
 		if len(r.streams) > 0 && r.streams[req.Path] == nil {
 			return &rtsp.Response{StatusCode: rtsp.StatusMethodNotValidInThisState}, nil
 		}
 		s := audio.NewServer(r.player)
+		r.attachRemote(s)
 		s.PeerIP = r.peerIP
 		r.streams[req.Path] = s
-		return plistResponse(setupEventResponse{EventPort: homekit.Server.EventPort, PeerInfo: peerInfos{Addresses: homekit.Server.Ips, Id: homekit.Device.Pi.String()}})
+		return plistResponse(setupEventResponse{EventPort: r.server.EventPort, PeerInfo: peerInfos{Addresses: r.server.Ips, Id: r.accessory.Pi.String()}})
 	}
 	if len(v.Streams) != 1 {
 		return &rtsp.Response{StatusCode: rtsp.StatusBadRequest}, nil
@@ -143,3 +158,16 @@ func (r *Rstp) OnSetPeerWeb(req *rtsp.Request) (*rtsp.Response, error) {
 	}
 	return &rtsp.Response{StatusCode: rtsp.StatusOK}, nil
 }
+
+func (r *Rstp) attachRemote(s *audio.Server) {
+	remote := r.eventSession
+	if remote == nil {
+		return
+	}
+	s.RemoteControl = remote.Send
+	s.NotifyVolume = func(ctx context.Context, db float64) error {
+		return remote.SetVolume(ctx, eventUnitVolume(db))
+	}
+}
+
+func eventUnitVolume(db float64) float64 { return min(1, max(0, (db+30)/30)) }

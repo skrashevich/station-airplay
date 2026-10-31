@@ -5,7 +5,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"log"
 	"strconv"
 )
 
@@ -225,7 +224,7 @@ func (res Response) String() string {
 	buf := bytes.NewBuffer(nil)
 	err := res.Write(bufio.NewWriter(buf))
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Sprintf("RTSP encoding error: %v", err)
 	}
 	return buf.String()
 }
