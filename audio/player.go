@@ -21,6 +21,7 @@ type Player struct {
 	mu          sync.Mutex
 	owner       *Server
 	gain        atomic.Uint64
+	volume      atomic.Uint64
 }
 
 func NewPlayer(ctx context.Context, clock *ptp.VirtualClock, opts codec.OutputOptions) *Player {
@@ -44,5 +45,10 @@ func (p *Player) release(s *Server) {
 		p.owner = nil
 	}
 }
-func (p *Player) SetVolume(db float64) { p.gain.Store(math.Float64bits(codec.LinearVolume(db))) }
-func (p *Player) Gain() float64        { return math.Float64frombits(p.gain.Load()) }
+func (p *Player) SetVolume(db float64) {
+	p.volume.Store(math.Float64bits(db))
+	p.gain.Store(math.Float64bits(codec.LinearVolume(db)))
+}
+func (p *Player) Gain() float64 { return math.Float64frombits(p.gain.Load()) }
+
+func (p *Player) Volume() float64 { return math.Float64frombits(p.volume.Load()) }

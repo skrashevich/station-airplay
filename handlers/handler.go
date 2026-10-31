@@ -21,7 +21,7 @@ type Rstp struct {
 }
 
 func NewRstpHandler(_ string, p *audio.Player) (*Rstp, error) {
-	return &Rstp{streams: make(map[string]*audio.Server), pairing: pairing.NewController(homekit.Server.Database), player: p, volume: -20}, nil
+	return &Rstp{streams: make(map[string]*audio.Server), pairing: pairing.NewController(homekit.Server.Database), player: p, volume: p.Volume()}, nil
 }
 func (r *Rstp) OnConnOpen(c *rtsp.Conn) {
 	r.peerIP = c.NetConn().RemoteAddr().(*net.TCPAddr).IP

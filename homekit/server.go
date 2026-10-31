@@ -4,7 +4,7 @@ package homekit
 import (
 	"github.com/brutella/hc/db"
 	"github.com/brutella/hc/hap"
-	"github.com/brutella/hc/util"
+	"path/filepath"
 )
 
 // reference : https://github.com/ejurgensen/pair_ap
@@ -21,7 +21,7 @@ type server struct {
 
 func NewServer(macAddress string, deviceName string, ips []string) (*server, error) {
 
-	storage, err := util.NewFileStorage(deviceName)
+	storage, err := NewPrivateStorage(filepath.Join(deviceName, "pairing"))
 	if err != nil {
 		return nil, err
 	}

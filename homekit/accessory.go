@@ -2,6 +2,7 @@
 package homekit
 
 import (
+	"encoding/hex"
 	"fmt"
 	"github.com/skrashevich/station-airplay/globals"
 	"reflect"
@@ -31,14 +32,14 @@ type Accessory struct {
 	pk        string
 }
 
-func NewAccessory(deviceId string, currentUuid string, features globals.Features) *Accessory {
+func NewAccessory(deviceId string, currentUuid string, features globals.Features, publicKey []byte) *Accessory {
 	var deviceUuid = uuid.MustParse(currentUuid)
 	return &Accessory{
 		Srcvers:   "366.0",
 		Deviceid:  deviceId,
 		Features:  features,
 		flags:     "0x4",
-		model:     "GoPlay2",
+		model:     "StationAirPlay",
 		protovers: "1.1",
 		acl:       "0",
 		rsf:       "0x0",
@@ -47,7 +48,7 @@ func NewAccessory(deviceId string, currentUuid string, features globals.Features
 		Psi:       UUID{deviceUuid},
 		gcgl:      "0",
 		igl:       "0",
-		pk:        "b07727d6f6cd6e08b58ede525ec3cdeaa252ad9f683feb212ef8a205246554e7",
+		pk:        hex.EncodeToString(publicKey),
 	}
 }
 

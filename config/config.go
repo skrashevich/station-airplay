@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 type Identity struct {
@@ -64,7 +65,7 @@ func LoadIdentity(dir string) (Identity, error) {
 	return id, nil
 }
 func (i Identity) ClockID() uint64 {
-	b, _ := hex.DecodeString(regexp.MustCompile(":").ReplaceAllString(i.DeviceID, ""))
+	b, _ := hex.DecodeString(strings.ReplaceAll(i.DeviceID, ":", ""))
 	if len(b) != 6 {
 		return 0
 	}

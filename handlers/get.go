@@ -37,7 +37,7 @@ func NewGetInfoResponse(deviceId string, features uint64, pi string,
 	latencies := [1]audioLatenciesResponse{{
 		InputLatencyMicros:  0,
 		OutputLatencyMicros: 400000,
-		Type:                100,
+		Type:                103,
 	}}
 
 	return &getInfoResponse{

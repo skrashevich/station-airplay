@@ -1,42 +1,47 @@
-// Adapted from ibiscum/goplay2; modifications Copyright 2026 Station AirPlay contributors.
+// AirPlay event connections are independent of audio/control sockets.
 package event
 
 import (
-	"github.com/skrashevich/station-airplay/globals"
+	"context"
+	"io"
 	"net"
-	"os"
+	"sync"
+	"time"
 )
 
-func RunEventServer() {
-	// listen for incoming connections.
-	l, err := net.Listen("tcp", ":60003")
-	if err != nil {
-		globals.ErrLog.Println("Error listening:", err.Error())
-		return
-	}
-	// Close the listener when the application closes.
-	defer l.Close()
+func Serve(ctx context.Context, l net.Listener) {
+	stop := context.AfterFunc(ctx, func() { l.Close() })
+	defer stop()
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	slots := make(chan struct{}, 8)
 	for {
-		// listen for an incoming connection.
-		conn, err := l.Accept()
+		c, err := l.Accept()
 		if err != nil {
-			globals.ErrLog.Println("Error accepting: ", err.Error())
-			os.Exit(1)
+			return
 		}
-
-		go handleEventConnection(conn)
-	}
-}
-
-func handleEventConnection(conn net.Conn) {
-	defer conn.Close()
-	// Handle connections in a new goroutine.
-	for {
-		var buffer [4096]byte
-		_, err := conn.Read(buffer[:])
-		if err != nil {
-			globals.ErrLog.Printf("Event error : %v", err)
-			break
+		select {
+		case slots <- struct{}{}:
+		default:
+			c.Close()
+			continue
 		}
+		wg.Go(func() {
+			defer func() { <-slots }()
+			defer c.Close()
+			stop := context.AfterFunc(ctx, func() { c.Close() })
+			defer stop()
+			var b [4096]byte
+			for {
+				c.SetReadDeadline(time.Now().Add(2 * time.Minute))
+				_, err := c.Read(b[:])
+				if err != nil {
+					if err == io.EOF {
+						return
+					}
+					return
+				}
+			}
+		})
 	}
 }

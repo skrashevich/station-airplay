@@ -83,7 +83,9 @@ func (s *Server) Serve(ctx context.Context) {
 				}
 				b[0] |= 0x10
 				s.measurements.addDelayReq(x.SequenceID, s.clock.Now())
-				s.eventConn.WriteToUDP(b, p.Src)
+				target := *p.Src
+				target.Port = 319
+				s.eventConn.WriteToUDP(b, &target)
 			case *wire.DelRespMsg:
 				s.measurements.addDelayResp(x.SequenceID, x.ReceiveTimestamp)
 				if result, err := s.measurements.latest(); err == nil {
