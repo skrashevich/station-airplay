@@ -17,6 +17,6 @@ for target in arm64 armv7;do
  cp README.md NOTICE LICENSE AUTHORS "$stage/"
  cp docs/validation.md "$stage/docs/"
  cp docs/licenses/* "$stage/docs/licenses/"
- tar -czf "dist/station-airplay-$version-linux-$target.tar.gz" -C "$stage" .
+ COPYFILE_DISABLE=1 tar -czf "dist/station-airplay-$version-linux-$target.tar.gz" -C "$stage" .
  rm -rf "$stage"
 done
