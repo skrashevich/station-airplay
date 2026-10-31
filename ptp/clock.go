@@ -16,6 +16,7 @@ func NewVirtualClock(delay int64) *VirtualClock {
 	return &VirtualClock{base: time.Now(), delay: time.Duration(delay) * time.Millisecond}
 }
 func (v *VirtualClock) Offset(diff time.Duration) { v.offset.Add(int64(diff)) }
-func (v *VirtualClock) Now() time.Time {
-	return time.Unix(0, int64(time.Since(v.base)-v.delay)-v.offset.Load())
+func (v *VirtualClock) Now() time.Time            { return v.At(time.Now()) }
+func (v *VirtualClock) At(stamp time.Time) time.Time {
+	return time.Unix(0, int64(stamp.Sub(v.base)-v.delay)-v.offset.Load())
 }

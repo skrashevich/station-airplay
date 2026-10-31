@@ -7,6 +7,7 @@ import (
 	"github.com/skrashevich/station-airplay/codec"
 	"github.com/skrashevich/station-airplay/ptp"
 	"math"
+	"net"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,6 +19,7 @@ type Player struct {
 	Clock       *ptp.VirtualClock
 	OutputDelay time.Duration
 	BindIP      string
+	Timing      *ptp.Server
 	mu          sync.Mutex
 	owner       *Server
 	gain        atomic.Uint64
@@ -36,12 +38,18 @@ func (p *Player) claim(s *Server) error {
 		return fmt.Errorf("another sender owns audio")
 	}
 	p.owner = s
+	if p.Timing != nil {
+		p.Timing.Bind(s, []net.IP{s.PeerIP})
+	}
 	return nil
 }
 func (p *Player) release(s *Server) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.owner == s {
+		if p.Timing != nil {
+			p.Timing.Clear(s)
+		}
 		p.owner = nil
 	}
 }
@@ -52,3 +60,20 @@ func (p *Player) SetVolume(db float64) {
 func (p *Player) Gain() float64 { return math.Float64frombits(p.gain.Load()) }
 
 func (p *Player) Volume() float64 { return math.Float64frombits(p.volume.Load()) }
+
+func (p *Player) SetVolumeFor(s *Server, db float64) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.owner != s {
+		return false
+	}
+	p.SetVolume(db)
+	return true
+}
+func (p *Player) SetTimingPeers(s *Server, peers []net.IP, id uint64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.owner == s && p.Timing != nil {
+		p.Timing.SetPeers(s, peers, id)
+	}
+}

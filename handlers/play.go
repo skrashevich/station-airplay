@@ -2,8 +2,10 @@
 package handlers
 
 import (
+	"github.com/skrashevich/station-airplay/audio"
 	"github.com/skrashevich/station-airplay/rtsp"
 	"howett.net/plist"
+	"log"
 	"math/bits"
 	"time"
 )
@@ -13,7 +15,7 @@ type setRateAnchorTime struct {
 	RtpTime       uint32 `plist:"rtpTime"`
 	Fraction      uint64 `plist:"networkTimeFrac"`
 	Seconds       uint64 `plist:"networkTimeSecs"`
-	ClockIdentity uint64 `plist:"networkTimeId"`
+	ClockIdentity uint64 `plist:"networkTimeTimelineID"`
 }
 
 func (s *setRateAnchorTime) StartTime() time.Time {
@@ -41,14 +43,29 @@ func (r *Rstp) OnSetRateAnchorTime(req *rtsp.Request) (*rtsp.Response, error) {
 	if v.Rate == 0 {
 		s.SetRate0()
 	} else {
+		log.Printf("audio anchor rate=%d rtp=%d clock=%016x seconds=%d", v.Rate, v.RtpTime, v.ClockIdentity, v.Seconds)
+		r.clockID = v.ClockIdentity
+		s.SetTimingPeers(r.peers, r.clockID)
 		s.SetRateAnchorTime(v.RtpTime, v.StartTime())
 	}
 	return &rtsp.Response{StatusCode: rtsp.StatusOK}, nil
 }
 func (r *Rstp) OnTeardownWeb(req *rtsp.Request) (*rtsp.Response, error) {
+	var body map[string]any
+	if len(req.Body) > 0 {
+		if _, err := plist.Unmarshal(req.Body, &body); err != nil {
+			return &rtsp.Response{StatusCode: rtsp.StatusBadRequest}, nil
+		}
+	}
 	if s := r.streams[req.Path]; s != nil {
 		s.Close()
-		delete(r.streams, req.Path)
+		if _, partial := body["streams"]; partial {
+			replacement := audio.NewServer(r.player)
+			replacement.PeerIP = r.peerIP
+			r.streams[req.Path] = replacement
+		} else {
+			delete(r.streams, req.Path)
+		}
 	}
 	return &rtsp.Response{StatusCode: rtsp.StatusOK}, nil
 }

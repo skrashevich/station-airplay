@@ -20,3 +20,7 @@ Add regression tests before modifications: malformed RTSP/content lengths and co
 ## Builder discretion
 
 Module/package structure, CLI spelling, implementation of bounded queues and clock scheduling, installer details, and dependency versions may be decided during implementation. Keep persistent identities private and avoid logging pairing secrets. Changes to go-aac itself are outside scope unless a reproducible required decode defect is found; prefer a minimal documented patch within the receiver only when justified.
+
+## Live-test scope update
+
+The user explicitly tested adding Station 2 to Midi playback from one iPhone. Basic simultaneous playback is therefore in scope; both receivers were subsequently confirmed playing. Sample-accurate synchronization, HomePod relay timing, wakeup protocols and long-duration drift remain unverified and are not claimed.

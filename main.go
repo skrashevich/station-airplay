@@ -158,6 +158,7 @@ func run(ctx context.Context, o options) error {
 	defer timing.Close()
 	player := audio.NewPlayer(ctx, clock, codec.OutputOptions{Command: aplay, Device: o.device})
 	player.BindIP = ip.String()
+	player.Timing = timing
 	player.OutputDelay = o.delay
 	player.SetVolume(o.volume)
 	txt := homekit.Device.ToRecords()

@@ -27,7 +27,9 @@ func (r *Rstp) OnSetParameterWeb(req *rtsp.Request) (*rtsp.Response, error) {
 				return &rtsp.Response{StatusCode: rtsp.StatusMethodNotValidInThisState}, nil
 			}
 			r.volume = v
-			r.player.SetVolume(v)
+			for _, s := range r.streams {
+				r.player.SetVolumeFor(s, v)
+			}
 		}
 	}
 	return &rtsp.Response{StatusCode: rtsp.StatusOK}, nil

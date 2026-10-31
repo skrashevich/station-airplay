@@ -5,8 +5,10 @@ import (
 	"context"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -14,6 +16,14 @@ import (
 func TestOutputHelper(t *testing.T) {
 	if os.Getenv("STATION_OUTPUT_HELPER") == "" {
 		return
+	}
+	if path := os.Getenv("STATION_OUTPUT_TERM"); path != "" {
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, syscall.SIGTERM)
+		os.WriteFile(path+".ready", []byte("ready"), 0600)
+		<-ch
+		os.WriteFile(path, []byte("clean"), 0600)
+		os.Exit(0)
 	}
 	if os.Getenv("STATION_OUTPUT_BLOCK") == "1" {
 		time.Sleep(time.Hour)
@@ -24,6 +34,32 @@ func TestOutputHelper(t *testing.T) {
 		os.Exit(2)
 	}
 	os.Exit(0)
+}
+
+func TestOutputCloseAllowsChildToReleaseMixer(t *testing.T) {
+	t.Setenv("STATION_OUTPUT_HELPER", "1")
+	dest := filepath.Join(t.TempDir(), "cleanup")
+	t.Setenv("STATION_OUTPUT_TERM", dest)
+	exe, _ := os.Executable()
+	o, err := OpenOutput(t.Context(), OutputOptions{Command: exe, Args: []string{"-test.run=TestOutputHelper", "--"}, Rate: 44100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer o.Close()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if _, err := os.Stat(dest + ".ready"); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("child not ready")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	o.Close()
+	if b, err := os.ReadFile(dest); err != nil || string(b) != "clean" {
+		t.Fatalf("child killed before mixer cleanup: %v", err)
+	}
 }
 
 func TestOutputDeliversPCMWithNegotiatedFormat(t *testing.T) {

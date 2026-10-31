@@ -4,8 +4,10 @@ package ptp
 import (
 	"context"
 	"encoding"
+	"encoding/binary"
 	"fmt"
 	wire "github.com/albanseurat/go-ptp"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -15,12 +17,18 @@ type serverMsg struct {
 	LocalTimeStamp time.Time
 	Msg            encoding.BinaryUnmarshaler
 	Src            *net.UDPAddr
+	ClockIdentity  uint64
 }
 type Server struct {
 	genConn, eventConn *net.UDPConn
 	clock              *VirtualClock
 	identity           uint64
 	measurements       *measures
+	mu                 sync.Mutex
+	owner              any
+	allowed            map[string]bool
+	master             uint64
+	generation         uint64
 }
 
 func Listen(clock *VirtualClock, ip net.IP, identity uint64) (*Server, error) {
@@ -50,13 +58,13 @@ func (s *Server) Serve(ctx context.Context) {
 				if err != nil {
 					return
 				}
-				stamp := s.clock.Now()
+				stamp := time.Now()
 				msg, err := decodePacket(b[:n])
 				if err != nil || msg == nil {
 					continue
 				}
 				select {
-				case packets <- serverMsg{stamp, msg, src}:
+				case packets <- serverMsg{LocalTimeStamp: stamp, Msg: msg, Src: src, ClockIdentity: binary.BigEndian.Uint64(b[20:28])}:
 				case <-ctx.Done():
 					return
 				}
@@ -64,16 +72,25 @@ func (s *Server) Serve(ctx context.Context) {
 		})
 	}
 	defer wg.Wait()
+	var generation uint64
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case p := <-packets:
+			gen, ok := s.accept(p.Src.IP, p.ClockIdentity)
+			if !ok {
+				continue
+			}
+			if gen != generation {
+				s.measurements = newMeasurements()
+				generation = gen
+			}
 			switch x := p.Msg.(type) {
 			case *wire.AnnounceMsg:
 				s.measurements.currentUTCoffset = time.Duration(x.CurrentUtcOffset) * time.Second
 			case *wire.SyncMsg:
-				s.measurements.addSync(x.SequenceID, p.LocalTimeStamp)
+				s.measurements.addSync(x.SequenceID, s.clock.At(p.LocalTimeStamp))
 			case *wire.FollowUpMsg:
 				s.measurements.addFollowUp(x.SequenceID, x.PreciseOriginTimestamp)
 				request := &wire.DelReqMsg{Header: wire.Header{Flags: wire.Flags{Unicast: true, TwoSteps: true, TimeScale: true}, MessageType: wire.DelayReqMsgType, MessageLength: wire.HeaderLen + wire.DelayReqPayloadLen, VersionPTP: wire.Version2, ClockIdentity: s.identity, PortNumber: 1, SequenceID: x.SequenceID, LogMessagePeriod: 0x7f}, OriginTimestamp: time.Unix(0, 0)}
@@ -87,9 +104,15 @@ func (s *Server) Serve(ctx context.Context) {
 				target.Port = 319
 				s.eventConn.WriteToUDP(b, &target)
 			case *wire.DelRespMsg:
+				if x.RequestingPortIdentity != s.identity || x.RequestingPortID != 1 {
+					continue
+				}
 				s.measurements.addDelayResp(x.SequenceID, x.ReceiveTimestamp)
 				if result, err := s.measurements.latest(); err == nil {
-					s.clock.Offset(result.Offset)
+					if result.Offset > 100*time.Millisecond || result.Offset < -100*time.Millisecond {
+						log.Printf("PTP correction offset=%v delay=%v", result.Offset, result.Delay)
+					}
+					s.applyOffset(gen, result.Offset)
 				}
 			}
 			// Limit state even if a peer never completes an exchange.
@@ -107,9 +130,13 @@ func decodePacket(b []byte) (encoding.BinaryUnmarshaler, error) {
 	if err := h.UnmarshalBinary(b[:wire.HeaderLen]); err != nil {
 		return nil, err
 	}
+	if h.VersionPTP != wire.Version2 {
+		return nil, fmt.Errorf("unsupported PTP version")
+	}
 	if int(h.MessageLength) > len(b) || int(h.MessageLength) < wire.HeaderLen {
 		return nil, fmt.Errorf("invalid PTP length")
 	}
+	b = b[:h.MessageLength]
 	var msg encoding.BinaryUnmarshaler
 	switch h.MessageType {
 	case wire.AnnounceMsgType:
@@ -117,13 +144,18 @@ func decodePacket(b []byte) (encoding.BinaryUnmarshaler, error) {
 	case wire.SyncMsgType:
 		msg = &wire.SyncMsg{}
 	case wire.FollowUpMsgType:
+		if len(b) < wire.HeaderLen+wire.FollowUpPayloadLen {
+			return nil, fmt.Errorf("truncated PTP FollowUp")
+		}
+		// The dependency expects exactly the fixed timestamp payload; Apple adds profile TLVs.
+		b = b[:wire.HeaderLen+wire.FollowUpPayloadLen]
 		msg = &wire.FollowUpMsg{}
 	case wire.DelayRespMsgType:
 		msg = &wire.DelRespMsg{}
 	default:
 		return nil, nil
 	}
-	if err := safeUnmarshal(msg, b[:h.MessageLength]); err != nil {
+	if err := safeUnmarshal(msg, b); err != nil {
 		return nil, err
 	}
 	return msg, nil
@@ -135,4 +167,71 @@ func safeUnmarshal(m encoding.BinaryUnmarshaler, b []byte) (err error) {
 		}
 	}()
 	return m.UnmarshalBinary(b)
+}
+
+// Selection changes are scoped to the claimed audio owner, so stale cleanup
+// from the previous session cannot reset a new sender's timing state.
+func (s *Server) Bind(owner any, peers []net.IP) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.owner = owner
+	s.allowed = peerMap(peers)
+	s.master = 0
+	s.generation++
+}
+func (s *Server) Clear(owner any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.owner == owner {
+		s.owner = nil
+		s.allowed = nil
+		s.master = 0
+		s.generation++
+	}
+}
+func (s *Server) SetPeers(owner any, peers []net.IP, id uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.owner != owner {
+		return
+	}
+	s.allowed = peerMap(peers)
+	if id != 0 {
+		if s.master != id {
+			log.Printf("PTP master selected clock=%016x", id)
+		}
+		s.master = id
+	}
+	s.generation++
+}
+func peerMap(peers []net.IP) map[string]bool {
+	m := make(map[string]bool)
+	for _, ip := range peers {
+		if ip != nil {
+			m[ip.String()] = true
+		}
+	}
+	return m
+}
+func (s *Server) accept(ip net.IP, id uint64) (uint64, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.owner == nil || !s.allowed[ip.String()] || id == 0 {
+		return s.generation, false
+	}
+	if s.master == 0 {
+		s.master = id
+		s.generation++
+	}
+	return s.generation, s.master == id
+}
+
+func (s *Server) applyOffset(generation uint64, offset time.Duration) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.owner == nil || s.generation != generation {
+		return false
+	}
+	s.clock.Offset(offset)
+	return true
 }

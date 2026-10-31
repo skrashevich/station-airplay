@@ -16,6 +16,8 @@ type Rstp struct {
 	pairing   *pairing.Controller
 	player    *audio.Player
 	peerIP    net.IP
+	peers     []net.IP
+	clockID   uint64
 	volume    float64
 	transient *pair.SetupServerSession
 }

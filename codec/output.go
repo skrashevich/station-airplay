@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strconv"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -55,7 +56,8 @@ func OpenOutput(ctx context.Context, opts OutputOptions) (*Output, error) {
 	args := append([]string(nil), opts.Args...)
 	args = append(args, "-q", "-D", opts.Device, "-t", "raw", "-f", "S16_LE", "-c", "2", "-r", strconv.Itoa(opts.Rate))
 	cmd := exec.CommandContext(ctx, opts.Command, args...)
-	cmd.WaitDelay = 250 * time.Millisecond
+	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
+	cmd.WaitDelay = time.Second
 	o := &Output{cancel: cancel, done: make(chan struct{})}
 	cmd.Stderr = &o.stderr
 	var err error

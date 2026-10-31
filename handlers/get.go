@@ -6,6 +6,7 @@ import (
 	"github.com/skrashevich/station-airplay/rtsp"
 	"howett.net/plist"
 	"strings"
+	"time"
 )
 
 type getInfoContent struct {
@@ -65,6 +66,7 @@ func (r *Rstp) OnGetInfo(req *rtsp.Request) (*rtsp.Response, error) {
 	responseBody := NewGetInfoResponse(homekit.Device.Deviceid, homekit.Device.Features.ToUint64(),
 		homekit.Device.Pi.String(), homekit.Device.Psi.String(), homekit.Device.Srcvers)
 
+	responseBody.AudioLatencies[0].OutputLatencyMicros = uint64(r.player.OutputDelay / time.Microsecond)
 	if body, err := plist.Marshal(*responseBody, plist.AutomaticFormat); err == nil {
 		return &rtsp.Response{StatusCode: rtsp.StatusOK, Header: rtsp.Header{
 			"Content-Type": rtsp.HeaderValue{"application/x-apple-binary-plist"},

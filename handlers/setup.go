@@ -8,6 +8,7 @@ import (
 	"github.com/skrashevich/station-airplay/homekit"
 	"github.com/skrashevich/station-airplay/rtsp"
 	"howett.net/plist"
+	"net"
 )
 
 type setupStreamRequest struct {
@@ -103,15 +104,42 @@ func (r *Rstp) OnSetupWeb(req *rtsp.Request) (*rtsp.Response, error) {
 	if err != nil {
 		return &rtsp.Response{StatusCode: rtsp.StatusNotEnoughBandwidth}, nil
 	}
-	r.player.SetVolume(r.volume)
+	s.SetTimingPeers(r.peers, r.clockID)
+	r.player.SetVolumeFor(s, r.volume)
 	return plistResponse(setupSteamsResponse{Streams: []setupStream{{BufferSize: globals.BufferSize, AudioFormat: v.Streams[0].AudioFormat, DataPort: uint16(port), TypeStream: 103}}})
 }
 func (r *Rstp) OnSetPeerWeb(req *rtsp.Request) (*rtsp.Response, error) {
-	var v any
-	if len(req.Body) > 0 {
-		if _, err := plist.Unmarshal(req.Body, &v); err != nil {
-			return &rtsp.Response{StatusCode: rtsp.StatusBadRequest}, nil
+	var value any
+	if _, err := plist.Unmarshal(req.Body, &value); err != nil {
+		return &rtsp.Response{StatusCode: rtsp.StatusBadRequest}, nil
+	}
+	var peers []net.IP
+	var walk func(any, int)
+	walk = func(v any, depth int) {
+		if depth > 8 || len(peers) >= 16 {
+			return
 		}
+		switch x := v.(type) {
+		case string:
+			if ip := net.ParseIP(x); ip != nil {
+				peers = append(peers, ip)
+			}
+		case []any:
+			for _, e := range x {
+				walk(e, depth+1)
+			}
+		case map[string]any:
+			for key, e := range x {
+				if key == "Addresses" || key == "addresses" || key == "peers" || key == "timingPeerInfo" {
+					walk(e, depth+1)
+				}
+			}
+		}
+	}
+	walk(value, 0)
+	r.peers = peers
+	for _, s := range r.streams {
+		s.SetTimingPeers(peers, r.clockID)
 	}
 	return &rtsp.Response{StatusCode: rtsp.StatusOK}, nil
 }
