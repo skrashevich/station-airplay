@@ -72,5 +72,8 @@ slider's linear -30..0 dB convention. Source restart is explicitly unsupported.
 
 Quasar Bridge integration recognizes enable/disable/status without LLM calls and
 routes generic media controls only while an AirPlay sender owns the session.
-Actual voice/iPhone validation of these new controls is separate from earlier
-standalone playback evidence and will be recorded after hardware testing.
+User verification on Midi confirmed voice enable, pause, resume and next-track
+commands after embedding this receiver in Quasar Bridge. Both Stations were
+updated to on-demand embedded receivers, preserving standalone identity state.
+Station 2 startup/health was verified; its new voice/media controls were not
+separately tested by the user.
