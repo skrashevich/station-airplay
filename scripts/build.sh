@@ -5,6 +5,8 @@ cd "$here"
 version=${1:-0.1.0-dev}
 case "$version" in ''|*[!0-9A-Za-z._+-]*) echo 'Invalid version' >&2;exit 2;; esac
 mkdir -p dist
+sh scripts/install_test.sh
+sh scripts/inittab_test.sh
 CGO_ENABLED=0 go test ./...
 CGO_ENABLED=0 go vet ./...
 for target in arm64 armv7;do

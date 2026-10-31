@@ -10,7 +10,10 @@ Tests cover independent AAC reference PCM, encrypted packet tampering/truncation
 RTSP bounds/concurrency, transient pairing and encryption transition, output
 process cleanup, volume ownership, future/blocked flush admission, fresh decoder
 state after resume, PTP selection/generation, timeline ID parsing, profile TLVs,
-identity/storage persistence, and installer ownership/update/uninstall.
+identity/storage persistence, and installer ownership/update/uninstall. Shell
+integration tests also exercise inittab command execution with quoted names,
+autostart retention on update, stop/disable, legacy-hook migration, unrelated-entry
+preservation, file permissions, backup retention and malformed-block rejection.
 
 ## Hardware and user verification
 
@@ -45,8 +48,35 @@ identity/storage persistence, and installer ownership/update/uninstall.
    signal-handler test proves cleanup is reached. A subsequent finite Midi probe
    exited with no remaining dmix shared-memory segments.
 
-Installation is contained under /data/opt/station-airplay. Boot hooks have not
-been enabled on either device; no vendor services or firmware settings were changed.
+The executable and state are contained under /data/opt/station-airplay. Optional
+autostart now uses a managed respawn entry in /etc/inittab; no new init script is
+created. Its control helper restores a read-only root after configuration edits.
+
+## BusyBox inittab autostart
+
+- Installer lifecycle and inittab tests passed on macOS and on the real BusyBox
+  shells of both Stations. Quoting tests include apostrophes, spaces, a literal
+  shell substitution and `#`, which BusyBox otherwise treats as an inline comment.
+- Both existing installations were migrated to a direct respawn command in
+  `/etc/inittab`, between ownership comments. The original file is saved as
+  `/data/opt/station-airplay/inittab.before-airplay`. All other entries and the
+  original file permissions were preserved. No `S98station-airplay` hook was added.
+- Station 2: live stop/start completed; the stopped process stayed stopped until
+  start. On both Stations, terminating the supervised receiver with SIGTERM led
+  to a new, single receiver process with parent PID 1.
+- Both Stations were then rebooted individually. Their boot IDs changed, and the
+  receiver started automatically without an SSH start command. Station 2 was
+  observed running at uptime 26 seconds, Midi at 12 seconds; these are observation
+  times, not measured startup durations. Both root filesystems were read-only.
+- A synthetic pairing/encrypted-control/AAC stream completed after reboot on
+  both Stations. Post-reboot user iPhone/group playback has not been retested in this
+  autostart update; the earlier user confirmations above remain the human playback
+  evidence.
+
+The installed receiver executable is unchanged by this shell/documentation
+update. `service stop` removes the boot entry while retaining supervised mode;
+`start` restores it. `disable` removes the entry and selects manual mode. Init
+executes the Go binary itself; the administrative helper is not in the boot path.
 
 ## Limits
 
