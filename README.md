@@ -25,7 +25,8 @@ synthetic test fixtures on the development host.
 AirPlay 1, ALAC, realtime UDP audio, video/screen mirroring and precision multiroom
 synchronization are not claimed. Basic group playback was confirmed by the user on Midi and Station 2 from one
 iPhone. Sample-accurate synchronization, long-term drift and relayed HomePod timing
-have not been validated.
+have not been validated. Relayed grandmaster timing and silent-clock wakeup
+are not implemented/validated for mixed HomePod groups.
 Applications requesting unsupported codecs/transports receive an explicit error.
 Opus is not used by this AAC transport and is not linked merely because a decoder is available.
 
