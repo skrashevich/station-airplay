@@ -2,7 +2,6 @@
 package pairing
 
 import (
-	"fmt"
 	"github.com/brutella/hc/db"
 	"github.com/brutella/hc/hap/pair"
 	"github.com/brutella/hc/util"
@@ -37,11 +36,6 @@ func (c Controller) Handle(cont util.Container) (util.Container, error) {
 	return c.ctrl.Handle(cont)
 }
 
-func NewController(deviceName string) (*Controller, error) {
-	storage, err := util.NewFileStorage(fmt.Sprintf("%s/db", deviceName))
-	if err != nil {
-		return nil, err
-	}
-	db := db.NewDatabaseWithStorage(storage)
-	return &Controller{ctrl: pair.NewPairingController(db), db: db}, nil
+func NewController(database db.Database) *Controller {
+	return &Controller{ctrl: pair.NewPairingController(database), db: database}
 }

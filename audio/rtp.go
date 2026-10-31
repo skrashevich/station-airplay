@@ -1,50 +1,55 @@
-// Adapted from ibiscum/goplay2; modifications Copyright 2026 Station AirPlay contributors.
+// Adapted from goplay2; validates the buffered AirPlay packet before authentication.
 package audio
 
 import (
 	"encoding/binary"
-	"github.com/brutella/hc/crypto/chacha20poly1305"
-	"github.com/pion/rtp"
+	"fmt"
 	"github.com/skrashevich/station-airplay/codec"
+	"golang.org/x/crypto/chacha20poly1305"
+	"io"
 )
 
 type TcpPacket struct {
-	rtp.Packet
 	SequenceNumber uint32
+	Timestamp      uint32
 }
-
 type PCMFrame struct {
 	TcpPacket
 	pcmData []byte
 }
 
-func (p *PCMFrame) Data() []byte {
-	return p.pcmData
+func (p *PCMFrame) Data() []byte { return p.pcmData }
+func ReadPacket(r io.Reader) ([]byte, error) {
+	var size [2]byte
+	if _, err := io.ReadFull(r, size[:]); err != nil {
+		return nil, err
+	}
+	n := int(binary.BigEndian.Uint16(size[:]))
+	if n < 38 {
+		return nil, fmt.Errorf("invalid buffered RTP length %d", n)
+	}
+	b := make([]byte, n-2)
+	_, err := io.ReadFull(r, b)
+	return b, err
 }
-
-func NewFrame(aacDecoder *codec.AacDecoder, sharedKey []byte, rawPacket []byte) (*PCMFrame, error) {
-	var err error
-	packet := TcpPacket{}
-	if err = packet.Unmarshal(rawPacket); err != nil {
-		return nil, err
+func NewFrame(d *codec.AacDecoder, key, raw []byte) (*PCMFrame, error) {
+	if len(raw) < 36 || raw[0] != 0x80 {
+		return nil, fmt.Errorf("invalid buffered RTP header/length")
 	}
-	var seqBytes [4]byte
-	copy(seqBytes[1:], rawPacket[1:4])
-	packet.Marker = false  // used by apple in sequenceNumber
-	packet.PayloadType = 0 // used by apple in sequenceNumber
-	packet.SequenceNumber = binary.BigEndian.Uint32(seqBytes[:])
-	message := packet.Payload[:len(packet.Payload)-24]
-	nonce := packet.Payload[len(packet.Payload)-8:]
-	var mac [16]byte
-	copy(mac[:], packet.Payload[len(packet.Payload)-24:len(packet.Payload)-8])
-	aad := packet.Raw[4:0xc]
-	decrypted, err := chacha20poly1305.DecryptAndVerify(sharedKey, nonce, message, mac, aad)
+	aead, err := chacha20poly1305.New(key)
 	if err != nil {
 		return nil, err
 	}
-	decode, err := aacDecoder.Decode(decrypted)
+	nonce := make([]byte, 12)
+	copy(nonce[4:], raw[len(raw)-8:])
+	cleartext, err := aead.Open(nil, nonce, raw[12:len(raw)-8], raw[4:12])
+	if err != nil {
+		return nil, fmt.Errorf("RTP authentication failed: %w", err)
+	}
+	pcm, err := d.Decode(cleartext)
 	if err != nil {
 		return nil, err
 	}
-	return &PCMFrame{packet, decode}, nil
+	seq := uint32(raw[1])<<16 | uint32(raw[2])<<8 | uint32(raw[3])
+	return &PCMFrame{TcpPacket: TcpPacket{seq, binary.BigEndian.Uint32(raw[4:8])}, pcmData: pcm}, nil
 }

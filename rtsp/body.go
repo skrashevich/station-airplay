@@ -12,13 +12,17 @@ type body []byte
 
 func (b *body) read(header Header, rb *bufio.Reader) error {
 	cls, ok := header["Content-Length"]
-	if !ok || len(cls) != 1 {
+	if !ok {
 		*b = nil
 		return nil
 	}
 
+	if len(cls) != 1 {
+		return fmt.Errorf("ambiguous Content-Length")
+	}
+
 	cl, err := strconv.ParseInt(cls[0], 10, 64)
-	if err != nil {
+	if err != nil || cl < 0 {
 		return fmt.Errorf("invalid Content-Length")
 	}
 

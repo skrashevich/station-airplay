@@ -11,11 +11,12 @@ import (
 const airportExpressHardcodedPin = "3939"
 
 type server struct {
-	Context  hap.Context
-	Database db.Database
-	Device   hap.SecuredDevice
-	Name     string
-	Ips      []string
+	Context   hap.Context
+	Database  db.Database
+	Device    hap.SecuredDevice
+	Name      string
+	Ips       []string
+	EventPort uint16
 }
 
 func NewServer(macAddress string, deviceName string, ips []string) (*server, error) {

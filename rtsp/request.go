@@ -76,7 +76,7 @@ func (req *Request) Read(rb *bufio.Reader) error {
 	}
 	req.URL = ur
 	pathAndQuery, ok := req.URL.RTSPPath()
-	if !ok {
+	if !ok && rawURL != "*" {
 		return fmt.Errorf("URL path and query not valid")
 	}
 	req.Path, req.Query = PathSplitQuery(pathAndQuery)
@@ -87,7 +87,7 @@ func (req *Request) Read(rb *bufio.Reader) error {
 	}
 	proto := string(byts[:len(byts)-1])
 
-	if proto != rtspProtocol10 {
+	if proto != rtspProtocol10 && proto != "HTTP/1.1" {
 		return fmt.Errorf("expected '%s', got '%s'", rtspProtocol10, proto)
 	}
 

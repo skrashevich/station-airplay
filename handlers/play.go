@@ -1,23 +1,12 @@
-// Adapted from ibiscum/goplay2; modifications Copyright 2026 Station AirPlay contributors.
+// Adapted from goplay2; typed control bodies avoid unchecked map assertions.
 package handlers
 
 import (
 	"github.com/skrashevich/station-airplay/rtsp"
 	"howett.net/plist"
-	"math"
-	"math/big"
-	"strings"
+	"math/bits"
 	"time"
 )
-
-type params struct {
-	SupportedCommand [][]byte `plist:"mrSupportedCommandsFromSender"`
-}
-
-type command struct {
-	Type   string `plist:"type"`
-	Params params `plist:"params"`
-}
 
 type setRateAnchorTime struct {
 	Rate          uint32 `plist:"rate"`
@@ -28,95 +17,51 @@ type setRateAnchorTime struct {
 }
 
 func (s *setRateAnchorTime) StartTime() time.Time {
-	mantissa := big.NewFloat(float64(s.Fraction))
-	result := big.NewFloat(0).SetMantExp(mantissa, -64)
-	result.Mul(result, big.NewFloat(math.Pow(10, 9)))
-	value, _ := result.Int64()
-	return time.Unix(int64(s.Seconds), value)
+	ns, _ := bits.Mul64(s.Fraction, 1_000_000_000)
+	return time.Unix(int64(s.Seconds), int64(ns))
 }
-
 func (r *Rstp) OnRecordWeb(req *rtsp.Request) (*rtsp.Response, error) {
-	if contentType, found := req.Header["Content-Type"]; found && strings.EqualFold(contentType[0], "application/x-apple-binary-plist") {
-		var content map[string]interface{}
-		if _, err := plist.Unmarshal(req.Body, &content); err != nil {
-			return &rtsp.Response{StatusCode: rtsp.StatusBadRequest}, nil
-		}
-	}
 	return &rtsp.Response{StatusCode: rtsp.StatusOK}, nil
 }
-
 func (r *Rstp) OnAudioMode(req *rtsp.Request) (*rtsp.Response, error) {
-	if contentType, found := req.Header["Content-Type"]; found && strings.EqualFold(contentType[0], "application/x-apple-binary-plist") {
-		var content map[string]interface{}
-		if _, err := plist.Unmarshal(req.Body, &content); err != nil {
-			return &rtsp.Response{StatusCode: rtsp.StatusBadRequest}, nil
-		}
-	}
-
 	return &rtsp.Response{StatusCode: rtsp.StatusOK}, nil
 }
-
-func (r *Rstp) OnSetRateAnchorTime(req *rtsp.Request) (*rtsp.Response, error) {
-	if contentType, found := req.Header["Content-Type"]; found && strings.EqualFold(contentType[0], "application/x-apple-binary-plist") {
-		var content setRateAnchorTime
-		if _, err := plist.Unmarshal(req.Body, &content); err != nil {
-			return &rtsp.Response{StatusCode: rtsp.StatusBadRequest}, nil
-		}
-		if s, found := r.streams[req.Path]; found {
-			if content.Rate == 0 {
-				s.SetRate0()
-			} else {
-				s.SetRateAnchorTime(content.RtpTime, content.StartTime())
-			}
-		}
-	}
-	return &rtsp.Response{StatusCode: rtsp.StatusOK}, nil
-}
-
 func (r *Rstp) OnCommand(req *rtsp.Request) (*rtsp.Response, error) {
-	if contentType, found := req.Header["Content-Type"]; found && strings.EqualFold(contentType[0], "application/x-apple-binary-plist") {
-		var content command
-		if _, err := plist.Unmarshal(req.Body, &content); err != nil {
-			return &rtsp.Response{StatusCode: rtsp.StatusBadRequest}, nil
-		}
-		for _, value := range content.Params.SupportedCommand {
-			var commandContent map[string]interface{}
-			if _, err := plist.Unmarshal(value, &commandContent); err != nil {
-				return &rtsp.Response{StatusCode: rtsp.StatusBadRequest}, nil
-			}
-		}
-	}
 	return &rtsp.Response{StatusCode: rtsp.StatusOK}, nil
 }
-
-func (r *Rstp) OnTeardownWeb(req *rtsp.Request) (*rtsp.Response, error) {
-	var content map[string]interface{}
-	if _, err := plist.Unmarshal(req.Body, &content); err != nil {
+func (r *Rstp) OnSetRateAnchorTime(req *rtsp.Request) (*rtsp.Response, error) {
+	var v setRateAnchorTime
+	if _, err := plist.Unmarshal(req.Body, &v); err != nil || v.Rate > 1 || v.Seconds > 1<<63-1 {
 		return &rtsp.Response{StatusCode: rtsp.StatusBadRequest}, nil
 	}
-	if s, found := r.streams[req.Path]; found {
-		s.Teardown()
-		// if streams is present we pause otherwise we drop the stream
-		if _, stream := content["streams"]; !stream {
-			delete(r.streams, req.Path)
-		}
+	s := r.streams[req.Path]
+	if s == nil {
+		return &rtsp.Response{StatusCode: rtsp.StatusSessionNotFound}, nil
+	}
+	if v.Rate == 0 {
+		s.SetRate0()
+	} else {
+		s.SetRateAnchorTime(v.RtpTime, v.StartTime())
 	}
 	return &rtsp.Response{StatusCode: rtsp.StatusOK}, nil
 }
-
+func (r *Rstp) OnTeardownWeb(req *rtsp.Request) (*rtsp.Response, error) {
+	if s := r.streams[req.Path]; s != nil {
+		s.Close()
+		delete(r.streams, req.Path)
+	}
+	return &rtsp.Response{StatusCode: rtsp.StatusOK}, nil
+}
 func (r *Rstp) OnFlushBuffered(req *rtsp.Request) (*rtsp.Response, error) {
-	if contentType, found := req.Header["Content-Type"]; found && strings.EqualFold(contentType[0], "application/x-apple-binary-plist") {
-		var content map[string]interface{}
-		if _, err := plist.Unmarshal(req.Body, &content); err != nil {
-			return &rtsp.Response{StatusCode: rtsp.StatusBadRequest}, nil
-		}
-		if s, found := r.streams[req.Path]; found {
-			if fromSeq, found := content["flushFromSeq"]; found {
-				s.Flush(fromSeq.(uint64), content["flushUntilSeq"].(uint64))
-			} else {
-				s.Flush(0, content["flushUntilSeq"].(uint64))
-			}
-		}
+	var v struct {
+		From  uint64 `plist:"flushFromSeq"`
+		Until uint64 `plist:"flushUntilSeq"`
+	}
+	if _, err := plist.Unmarshal(req.Body, &v); err != nil || v.From > 0xffffff || v.Until > 0xffffff {
+		return &rtsp.Response{StatusCode: rtsp.StatusBadRequest}, nil
+	}
+	if s := r.streams[req.Path]; s != nil {
+		s.Flush(v.From, v.Until)
 	}
 	return &rtsp.Response{StatusCode: rtsp.StatusOK}, nil
 }

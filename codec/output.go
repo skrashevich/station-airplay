@@ -2,7 +2,6 @@ package codec
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -99,7 +98,5 @@ func (o *Output) Drain(ctx context.Context) error {
 func (o *Output) Close() error {
 	o.once.Do(func() { o.cancel(); o.input.Close() })
 	<-o.done
-	if o.err != nil && !errors.Is(o.err, context.Canceled) { /* cancellation normally yields an ExitError */
-	}
 	return nil
 }

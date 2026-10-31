@@ -1,100 +1,115 @@
-// Adapted from ibiscum/goplay2; modifications Copyright 2026 Station AirPlay contributors.
+// Adapted from goplay2; explicit negotiation and no model-specific audio setup.
 package handlers
 
 import (
+	"fmt"
 	"github.com/skrashevich/station-airplay/audio"
 	"github.com/skrashevich/station-airplay/globals"
 	"github.com/skrashevich/station-airplay/homekit"
 	"github.com/skrashevich/station-airplay/rtsp"
 	"howett.net/plist"
-	"strings"
 )
 
 type setupStreamRequest struct {
-	Type            uint8    `plist:"type"`
-	SharedKey       [32]byte `plist:"shk"`
-	Spf             uint32   `plist:"spf"`
-	CompressionType uint32   `plist:"ct"`
-	AudioFormat     uint32   `plist:"audioFormat"`
+	Type            uint8  `plist:"type"`
+	SharedKey       []byte `plist:"shk"`
+	Spf             uint32 `plist:"spf"`
+	CompressionType uint32 `plist:"ct"`
+	AudioFormat     uint64 `plist:"audioFormat"`
+	SampleRate      uint32 `plist:"sr"`
 }
-
 type setupRtsp struct {
-	Streams []setupStreamRequest `plist:"streams"`
+	Streams        []setupStreamRequest `plist:"streams"`
+	TimingProtocol string               `plist:"timingProtocol"`
 }
-
 type peerInfos struct {
 	Addresses                 []string `plist:"Addresses"`
 	Id                        string   `plist:"ID"`
 	ClockPortMatchingOverride bool     `plist:"SupportsClockPortMatchingOverride"`
 }
-
 type setupEventResponse struct {
 	EventPort  uint16    `plist:"eventPort"`
-	peerInfo   peerInfos `plist:"timingPeerInfo"`
+	PeerInfo   peerInfos `plist:"timingPeerInfo"`
 	TimingPort uint16    `plist:"timingPort"`
 }
-
 type setupStream struct {
 	BufferSize  uint32 `plist:"audioBufferSize"`
-	AudioFormat uint32 `plist:"audioFormat"`
+	AudioFormat uint64 `plist:"audioFormat"`
 	DataPort    uint16 `plist:"dataPort"`
 	ControlPort uint16 `plist:"controlPort"`
 	TypeStream  uint8  `plist:"type"`
 }
-
 type setupSteamsResponse struct {
 	Streams []setupStream `plist:"streams"`
 }
 
-func (r *Rstp) OnSetupWeb(req *rtsp.Request) (*rtsp.Response, error) {
-
-	if contentType, found := req.Header["Content-Type"]; found && strings.EqualFold(contentType[0], "application/x-apple-binary-plist") {
-		var content setupRtsp
-		if _, err := plist.Unmarshal(req.Body, &content); err != nil {
-			return &rtsp.Response{StatusCode: rtsp.StatusBadRequest}, nil
-		}
-		if content.Streams != nil {
-			if s, found := r.streams[req.Path]; found {
-				port, err := s.Setup(content.Streams[0].SharedKey[:])
-				if err != nil {
-					return &rtsp.Response{StatusCode: rtsp.StatusInternalServerError}, nil
-				}
-				setupStreamsResponse := setupSteamsResponse{
-					Streams: []setupStream{{
-						BufferSize:  globals.BufferSize,
-						AudioFormat: content.Streams[0].AudioFormat,
-						DataPort:    uint16(port),
-						TypeStream:  content.Streams[0].Type,
-					}},
-				}
-				if body, err := plist.Marshal(setupStreamsResponse, plist.AutomaticFormat); err == nil {
-					return &rtsp.Response{StatusCode: rtsp.StatusOK, Header: rtsp.Header{
-						"Content-Type": rtsp.HeaderValue{"application/x-apple-binary-plist"},
-					}, Body: body}, nil
-				}
-			}
-		} else {
-			r.streams[req.Path] = audio.NewServer(r.player)
-			setupEventResponse := setupEventResponse{peerInfo: peerInfos{
-				Addresses:                 homekit.Server.Ips,
-				Id:                        homekit.Device.Pi.String(),
-				ClockPortMatchingOverride: false,
-			}, EventPort: 60003}
-			if body, err := plist.Marshal(setupEventResponse, plist.AutomaticFormat); err == nil {
-				return &rtsp.Response{StatusCode: rtsp.StatusOK, Header: rtsp.Header{
-					"Content-Type": rtsp.HeaderValue{"application/x-apple-binary-plist"},
-				}, Body: body}, nil
-			}
-		}
+func plistResponse(value any) (*rtsp.Response, error) {
+	body, err := plist.Marshal(value, plist.BinaryFormat)
+	if err != nil {
+		return nil, err
 	}
-	return &rtsp.Response{StatusCode: rtsp.StatusInternalServerError}, nil
+	return &rtsp.Response{StatusCode: rtsp.StatusOK, Header: rtsp.Header{"Content-Type": {"application/x-apple-binary-plist"}}, Body: body}, nil
 }
-
+func streamRate(v setupStreamRequest) (int, error) {
+	if v.Type != 103 || v.CompressionType != 4 || len(v.SharedKey) != 32 || (v.Spf != 0 && v.Spf != 1024) {
+		return 0, fmt.Errorf("only buffered AAC-LC stereo is supported")
+	}
+	rate := 44100
+	switch v.AudioFormat {
+	case 1 << 22:
+		rate = 44100
+	case 1 << 24:
+		rate = 48000
+	default:
+		return 0, fmt.Errorf("unsupported audioFormat %#x", v.AudioFormat)
+	}
+	if v.SampleRate != 0 && v.SampleRate != uint32(rate) {
+		return 0, fmt.Errorf("inconsistent sample rate")
+	}
+	return rate, nil
+}
+func (r *Rstp) OnSetupWeb(req *rtsp.Request) (*rtsp.Response, error) {
+	var v setupRtsp
+	if _, err := plist.Unmarshal(req.Body, &v); err != nil {
+		return &rtsp.Response{StatusCode: rtsp.StatusBadRequest}, nil
+	}
+	if v.Streams == nil {
+		if v.TimingProtocol != "" && v.TimingProtocol != "PTP" {
+			return &rtsp.Response{StatusCode: rtsp.StatusUnsupportedTransport}, nil
+		}
+		if old := r.streams[req.Path]; old != nil {
+			old.Close()
+		}
+		if len(r.streams) > 0 && r.streams[req.Path] == nil {
+			return &rtsp.Response{StatusCode: rtsp.StatusMethodNotValidInThisState}, nil
+		}
+		s := audio.NewServer(r.player)
+		s.PeerIP = r.peerIP
+		r.streams[req.Path] = s
+		return plistResponse(setupEventResponse{EventPort: homekit.Server.EventPort, PeerInfo: peerInfos{Addresses: homekit.Server.Ips, Id: homekit.Device.Pi.String()}})
+	}
+	if len(v.Streams) != 1 {
+		return &rtsp.Response{StatusCode: rtsp.StatusBadRequest}, nil
+	}
+	rate, err := streamRate(v.Streams[0])
+	if err != nil {
+		return &rtsp.Response{StatusCode: rtsp.StatusUnsupportedMediaType}, nil
+	}
+	s := r.streams[req.Path]
+	if s == nil {
+		return &rtsp.Response{StatusCode: rtsp.StatusSessionNotFound}, nil
+	}
+	port, err := s.Setup(v.Streams[0].SharedKey, rate)
+	if err != nil {
+		return &rtsp.Response{StatusCode: rtsp.StatusNotEnoughBandwidth}, nil
+	}
+	r.player.SetVolume(r.volume)
+	return plistResponse(setupSteamsResponse{Streams: []setupStream{{BufferSize: globals.BufferSize, AudioFormat: v.Streams[0].AudioFormat, DataPort: uint16(port), TypeStream: 103}}})
+}
 func (r *Rstp) OnSetPeerWeb(req *rtsp.Request) (*rtsp.Response, error) {
-
-	if contentType, found := req.Header["Content-Type"]; found && strings.EqualFold(contentType[0], "application/x-apple-binary-plist") {
-		var content map[string]interface{}
-		if _, err := plist.Unmarshal(req.Body, &content); err != nil {
+	var v any
+	if len(req.Body) > 0 {
+		if _, err := plist.Unmarshal(req.Body, &v); err != nil {
 			return &rtsp.Response{StatusCode: rtsp.StatusBadRequest}, nil
 		}
 	}

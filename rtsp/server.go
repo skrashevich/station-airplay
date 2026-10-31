@@ -1,112 +1,106 @@
-// Adapted from ibiscum/goplay2; modifications Copyright 2026 Station AirPlay contributors.
+// Adapted from ibiscum/goplay2; connection state and lifecycle rewritten.
 package rtsp
 
 import (
 	"bufio"
-	"github.com/skrashevich/station-airplay/globals"
+	"context"
+	"errors"
+	"io"
+	"log"
 	"net"
-)
-
-const (
-	serverConnReadBufferSize  = 4096
-	serverConnWriteBufferSize = 4096
+	"sync"
+	"time"
 )
 
 type Handler interface {
-	Handle(conn *Conn, req *Request) (*Response, error)
-	OnRequest(conn *Conn, request *Request)
-	OnResponse(conn *Conn, resp *Response)
-	OnConnOpen(conn *Conn)
+	Handle(*Conn, *Request) (*Response, error)
+	OnRequest(*Conn, *Request)
+	OnResponse(*Conn, *Response)
+	OnConnOpen(*Conn)
 }
-
-type Server struct {
-	h  Handler
-	bw *bufio.Writer
-	br *bufio.Reader
-}
-
 type Conn struct {
-	c net.Conn
+	c             net.Conn
+	AfterResponse func()
 }
 
-func (c *Conn) NetConn() net.Conn {
-	return c.c
-}
+func (c *Conn) NetConn() net.Conn     { return c.c }
+func (c *Conn) Close() error          { return c.c.Close() }
+func (c *Conn) SetNetConn(n net.Conn) { c.c = n }
 
-func (c *Conn) Close() error {
-	return c.c.Close()
-}
-
-func (c *Conn) SetNetConn(conn net.Conn) {
-	c.c = conn
-}
-
-func RunRtspServer(handlers Handler) (err error) {
-
-	s := &Server{
-		h: handlers,
-	}
-	if l, err := net.Listen("tcp4", ":7000"); err == nil {
-		defer l.Close()
-		for {
-
-			conn, err := l.Accept()
-			if err != nil {
-				globals.ErrLog.Println("Error accepting: ", err.Error())
-				return err
-			}
-			rConn := &Conn{
-				c: conn,
-			}
-			s.h.OnConnOpen(rConn)
-			go s.handleRstpConnection(rConn)
-		}
-	}
-	return err
-}
-
-func (s *Server) handleRstpConnection(conn *Conn) {
-	defer conn.Close()
-
-	s.br = bufio.NewReaderSize(conn.NetConn(), serverConnReadBufferSize)
-	s.bw = bufio.NewWriterSize(conn.NetConn(), serverConnWriteBufferSize)
-
+// Serve creates isolated protocol handlers and buffers for every connection.
+func Serve(ctx context.Context, l net.Listener, factory func() (Handler, error)) error {
+	var wg sync.WaitGroup
+	slots := make(chan struct{}, 32)
+	stop := context.AfterFunc(ctx, func() { l.Close() })
+	defer stop()
+	defer wg.Wait()
 	for {
-		request, err := parseRequest(s.br)
+		raw, err := l.Accept()
 		if err != nil {
-			globals.ErrLog.Printf("Error parsing RSTP request %v \n", err)
-			return
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
 		}
-		s.h.OnRequest(conn, request)
-		response, err := s.h.Handle(conn, request)
-		if err != nil {
-			globals.ErrLog.Printf("Error handling RSTP request %v \n", err)
-			return
+		select {
+		case slots <- struct{}{}:
+		default:
+			raw.Close()
+			continue
 		}
-		err = s.flushResponse(conn, request, response)
-		if err != nil {
-			globals.ErrLog.Printf("Error flusing RSTP response %v \n", err)
-			return
-		}
+		wg.Go(func() {
+			defer func() { <-slots }()
+			defer raw.Close()
+			stop := context.AfterFunc(ctx, func() { raw.Close() })
+			defer stop()
+			h, err := factory()
+			if err != nil {
+				log.Printf("RTSP handler: %v", err)
+				return
+			}
+			conn := &Conn{c: raw}
+			h.OnConnOpen(conn)
+			defer conn.Close()
+			if closer, ok := h.(interface{ OnConnClose(*Conn) }); ok {
+				defer closer.OnConnClose(conn)
+			}
+			br, bw := bufio.NewReaderSize(conn.c, 4096), bufio.NewWriterSize(conn.c, 4096)
+			for {
+				conn.c.SetReadDeadline(time.Now().Add(5 * time.Minute))
+				req := new(Request)
+				if err := req.Read(br); err != nil {
+					if !errors.Is(err, io.EOF) && ctx.Err() == nil {
+						log.Printf("RTSP read: %v", err)
+					}
+					return
+				}
+				h.OnRequest(conn, req)
+				resp, err := h.Handle(conn, req)
+				if err != nil {
+					log.Printf("RTSP handle: %v", err)
+					if resp == nil {
+						return
+					}
+				}
+				if resp == nil {
+					return
+				}
+				if resp.Header == nil {
+					resp.Header = make(Header)
+				}
+				resp.Header["CSeq"] = req.Header["CSeq"]
+				resp.Header["Server"] = HeaderValue{"AirTunes/366.0"}
+				h.OnResponse(conn, resp)
+				conn.c.SetWriteDeadline(time.Now().Add(10 * time.Second))
+				if err := resp.Write(bw); err != nil {
+					return
+				}
+				if conn.AfterResponse != nil {
+					f := conn.AfterResponse
+					conn.AfterResponse = nil
+					f()
+				}
+			}
+		})
 	}
-
-}
-
-func (s *Server) flushResponse(conn *Conn, req *Request, resp *Response) error {
-	if resp.Header == nil {
-		resp.Header = make(Header)
-	}
-	resp.Header["CSeq"] = req.Header["CSeq"]
-	resp.Header["Server"] = HeaderValue{"AirTunes/366.0"}
-	s.h.OnResponse(conn, resp)
-	return resp.Write(s.bw)
-}
-
-func parseRequest(br *bufio.Reader) (*Request, error) {
-	var req Request
-	var err error
-	if err = req.Read(br); err != nil {
-		return nil, err
-	}
-	return &req, nil
 }

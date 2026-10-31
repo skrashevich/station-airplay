@@ -189,6 +189,9 @@ func (res *Response) Read(rb *bufio.Reader) error {
 
 // Write writes a Response.
 func (res Response) Write(bw *bufio.Writer) error {
+	if res.Header == nil {
+		res.Header = make(Header)
+	}
 	if res.StatusMessage == "" {
 		if status, ok := statusMessages[res.StatusCode]; ok {
 			res.StatusMessage = status

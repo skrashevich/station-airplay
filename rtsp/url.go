@@ -101,4 +101,3 @@ func (u *URL) RTSPPathAndQuery() (string, bool) {
 
 	return pathAndQuery, true
 }
-

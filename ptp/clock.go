@@ -1,22 +1,21 @@
-// Adapted from ibiscum/goplay2; modifications Copyright 2026 Station AirPlay contributors.
+// Adapted from goplay2; offset updates are atomic and system time is untouched.
 package ptp
 
-import "time"
+import (
+	"sync/atomic"
+	"time"
+)
 
 type VirtualClock struct {
-	start int64
-	diff  time.Duration
-	delay int64
+	base   time.Time
+	offset atomic.Int64
+	delay  time.Duration
 }
 
 func NewVirtualClock(delay int64) *VirtualClock {
-	return &VirtualClock{start: time.Now().UnixNano(), diff: time.Duration(0), delay: delay}
+	return &VirtualClock{base: time.Now(), delay: time.Duration(delay) * time.Millisecond}
 }
-
-func (v *VirtualClock) Offset(diff time.Duration) {
-	v.start += diff.Nanoseconds()
-}
-
+func (v *VirtualClock) Offset(diff time.Duration) { v.offset.Add(int64(diff)) }
 func (v *VirtualClock) Now() time.Time {
-	return time.Unix(0, time.Now().UnixNano()-v.start-v.delay*1000000)
+	return time.Unix(0, int64(time.Since(v.base)-v.delay)-v.offset.Load())
 }
