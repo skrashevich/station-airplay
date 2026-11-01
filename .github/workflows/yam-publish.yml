@@ -24,10 +24,10 @@ jobs:
             echo 'Configure YAM_PUBLISH_TOKEN and YAM_AUTHOR_PRIVATE_KEY for namespace skrashevich first.' >&2
             exit 1
           fi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag }}
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: nyakokitsu/yam
           ref: c753064bb2320305df61c575440bf739e47551b8

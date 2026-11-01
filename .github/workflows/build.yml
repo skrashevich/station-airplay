@@ -11,8 +11,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: Test race safety and launchers
@@ -23,7 +23,7 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: sh scripts/build.sh "$VERSION"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: nyakokitsu/yam
           ref: c753064bb2320305df61c575440bf739e47551b8
@@ -44,7 +44,7 @@ jobs:
           python3 scripts/checksums.py "$VERSION"
           cd dist
           sha256sum -c SHA256SUMS
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-assets
           if-no-files-found: error
