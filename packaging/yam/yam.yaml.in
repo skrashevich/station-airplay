@@ -1,7 +1,11 @@
 name: skrashevich/station-airplay
 version: @VERSION@
 license: Apache-2.0 AND LGPL-3.0-only AND MIT
-description: Автономный приёмник аудио AirPlay 2 для Яндекс Станций с root-доступом
+description: >-
+  Самая быстрая реализация AirPlay 2 для Яндекс Станций, не требующая изменений
+  конфигурации станции. Используется как встроенный AirPlay-приёмник в quasar-bridge.
+  Совместима со всеми Станциями на Linux с glibc/ALSA; модели на Android,
+  включая Станцию Макс, не поддерживаются.
 homepage: https://github.com/skrashevich/station-airplay
 targets: [@PLATFORM@]
 files:

@@ -6,9 +6,10 @@
 в `share/`, права которых старые версии YAM теряли. Формат и ограничения:
 [упаковка YAM](https://github.com/nyakokitsu/yam/blob/main/docs/PACKAGING.md).
 
-## Установка из GitHub Releases
+## Совместимые колонки
 
-Команды ниже выполняются **на колонке**, в SSH/ADB shell. Выберите ID своего
+Поддерживаются все Яндекс Станции на Linux с glibc/ALSA и root-доступом;
+Android-модели исключены. Выберите ID своего
 профиля YAM; это ID менеджера, он не всегда совпадает с названием модели.
 
 | Модель | Профиль | Приёмник |
@@ -20,20 +21,40 @@
 | Миди | `cucumber` | ARM64 |
 | Станция 2 | `yandexmidi` | ARM64 |
 | Стрит | `mango` | ARMv7 |
-| Макс | `yandexstation_2` | ARM64 |
-| Станция первого поколения | `yandexstation` | ARM64 |
 | Станция 3 | `orion` | ARM64 |
 
 Это список собираемых пакетов, а не подтверждение воспроизведения на каждой
 модели. Требования к прошивке и результаты аппаратных проверок находятся в
 [README](../README.md#требования-и-совместимость) и [validation.md](validation.md).
-Профили хаба `saturn` и сторонней колонки `jbl_link_music` в выпуск не входят.
+Макс (включая вариант с Zigbee, профиль `yandexstation_2`) и Станция первого
+поколения на штатной прошивке (`yandexstation`) работают на Android и не
+поддерживаются. См. [описание Макс](https://hackalice.me/devices/station-max/) и
+[первого поколения](https://hackalice.me/devices/station-gen1/).
+Профили хаба `saturn` и сторонней колонки `jbl_link_music` также в выпуск не входят.
+
+## Установка по имени из реестра
+
+Команды выполняются **на колонке**, в SSH/ADB shell. Добавьте официальный
+реестр, если он ещё не настроен, и установите пакет:
+
+```sh
+yam registry add official https://repo.yse.wtf/v2 \
+  --key ed25519:5Rz8F47uftWVU5kLgWYhprkEZ4rpP2kecUge/a7KQas=
+yam install skrashevich/station-airplay
+station-airplay -check
+station-airplay -name 'Моя Станция AirPlay'
+```
+
+Для конкретной версии используйте `yam install skrashevich/station-airplay@0.1.1`.
+Ключ и URL приведены из [документации YAM](https://github.com/nyakokitsu/yam#использование).
+
+## Установка из GitHub Releases
 
 Например, для Миди:
 
 ```sh
-curl -fL https://github.com/skrashevich/station-airplay/releases/download/v0.1/install-yam.sh -o /tmp/install-station-airplay-yam.sh
-sh /tmp/install-station-airplay-yam.sh cucumber v0.1
+curl -fL https://github.com/skrashevich/station-airplay/releases/download/v0.1.1/install-yam.sh -o /tmp/install-station-airplay-yam.sh
+sh /tmp/install-station-airplay-yam.sh cucumber v0.1.1
 station-airplay -check
 station-airplay -name 'Миди AirPlay'
 ```
@@ -44,11 +65,11 @@ station-airplay -name 'Миди AirPlay'
 HTTPS-релиза проверяет целостность загрузки; подпись реестра в этом режиме не используется.
 Проверка `-check` не воспроизводит звук; она проверяет интерфейс и библиотеки вывода.
 
-Можно скачать пакет на ПК со [страницы релиза](https://github.com/skrashevich/station-airplay/releases/tag/v0.1),
+Можно скачать пакет на ПК со [страницы релиза](https://github.com/skrashevich/station-airplay/releases/tag/v0.1.1),
 сверить его SHA-256 с `SHA256SUMS`, передать по ADB/SSH и установить локально:
 
 ```sh
-yam install --yes /tmp/station-airplay-0.1.0-cucumber.yampkg
+yam install --yes /tmp/station-airplay-0.1.1-cucumber.yampkg
 yam doctor
 yam service list
 ```
@@ -94,18 +115,15 @@ yam remove skrashevich/station-airplay
 YAM удаляет пакет и ссылки; каталог состояния сохраняется. Полная очистка
 состояния выполняется пользователем отдельно после удаления и отменяет сопряжение.
 
-## Установка по имени из реестра
+## Откуда берутся описание и список колонок
 
-GitHub Release сам по себе не добавляет пакет в официальный реестр YAM.
-Этот способ доступен **только после публикации владельцем namespace** и появления
-нужного профиля/версии в реестре:
+Текст задаётся полем `description` в `packaging/yam/yam.yaml.in`.
+`scripts/build-yam.py` подставляет версию и профиль, а upstream `yam-publish pack`
+записывает описание в `MANIFEST.yaml` внутри `.yampkg`. При публикации реестр
+читает эти метаданные и показывает описание пакета в каталоге.
 
-```sh
-yam registry add official https://repo.yse.wtf/v2 \
-  --key ed25519:5Rz8F47uftWVU5kLgWYhprkEZ4rpP2kecUge/a7KQas=
-yam info skrashevich/station-airplay
-yam install skrashevich/station-airplay@0.1.0
-```
-
-Ключ и URL приведены из [документации YAM](https://github.com/nyakokitsu/yam#использование).
-Порядок подписанной публикации описан в [releases.md](releases.md).
+Профили и архитектуры перечислены в `packaging/yam/targets.tsv`. На каждый
+профиль собирается отдельный архив; реестр формирует список колонок по артефактам
+версии. Профили менеджера сами по себе не подтверждают совместимость приложения.
+Для исправления описания/списка уже опубликованной версии выпускается новая
+версия пакета. Порядок подписанной публикации описан в [releases.md](releases.md).

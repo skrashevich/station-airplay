@@ -1,8 +1,8 @@
 #!/bin/sh
 # Run on the station with an existing YAM v2 installation.
 set -eu
-platform=${1:?Usage: sh install-yam.sh PLATFORM [TAG, default v0.1]}
-tag=${2:-v0.1}
+platform=${1:?Usage: sh install-yam.sh PLATFORM [TAG, default v0.1.1]}
+tag=${2:-v0.1.1}
 case "$platform" in ''|*[!a-z0-9_]*) echo 'Invalid YAM platform' >&2; exit 2 ;; esac
 case "$tag" in v*) version=${tag#v} ;; *) echo 'Tag must start with v' >&2; exit 2 ;; esac
 case "$version" in ''|*[!0-9.]*|.*|*.) echo 'Invalid release tag' >&2; exit 2 ;; esac

@@ -1,6 +1,8 @@
 # Station AirPlay
 
-Автономный приёмник аудио AirPlay 2 на Go для Яндекс Станций с root-доступом и Linux.
+Самая быстрая реализация AirPlay 2 для Яндекс Станций, не требующая изменений
+конфигурации станции. Автономный приёмник на Go также используется как встроенный
+AirPlay-приёмник в [quasar-bridge](https://github.com/skrashevich/quasar-bridge).
 Основа протокола: [ibiscum/goplay2](https://github.com/ibiscum/goplay2), коммит `91a0a06`.
 Декодирование AAC: [skrashevich/go-aac](https://github.com/skrashevich/go-aac).
 Декодирование ALAC: [mycophonic/saprobe-alac](https://github.com/mycophonic/saprobe-alac).
@@ -18,6 +20,11 @@ ALSA-библиотеку прошивки и сохраняет её путь �
 синтетических тестовых данных на машине разработчика.
 
 ## Требования и совместимость
+
+Совместимы все Яндекс Станции на Linux с glibc/ALSA и root-доступом.
+Станции на Android не поддерживаются, включая Макс (с Zigbee и без него) и
+Станцию первого поколения на штатной прошивке. Соответствующие профили YAM
+`yandexstation_2` и `yandexstation` в новые пакеты не входят.
 
 - Linux с root-доступом, glibc, libdl, libasound и рабочим PCM воспроизведения ALSA `default`.
 - Linux ARM64 или ARMv7; выбирайте архитектуру, а не модель Станции.
@@ -91,17 +98,20 @@ pause/resume/stop/next/previous по его зашифрованному кан�
 
 ### Через YAM v2
 
-Готовые `.yampkg` находятся в [GitHub Releases](https://github.com/skrashevich/station-airplay/releases).
-Например, на Миди с установленным YAM:
+Пакет опубликован в реестре YAM как `skrashevich/station-airplay`.
+На колонке с установленным YAM добавьте официальный реестр, если он ещё не настроен:
 
 ```sh
-curl -fL https://github.com/skrashevich/station-airplay/releases/download/v0.1/install-yam.sh -o /tmp/install-station-airplay-yam.sh
-sh /tmp/install-station-airplay-yam.sh cucumber v0.1
+yam registry add official https://repo.yse.wtf/v2 \
+  --key ed25519:5Rz8F47uftWVU5kLgWYhprkEZ4rpP2kecUge/a7KQas=
+yam install skrashevich/station-airplay
 station-airplay -check
-station-airplay -name 'Миди AirPlay'
+station-airplay -name 'Моя Станция AirPlay'
 ```
 
-Установщик сверяет SHA-256 и передаёт подходящий пакет менеджеру. YAM хранит
+YAM проверяет подпись индекса, SHA-256 и совместимость профиля. Готовые `.yampkg`
+также находятся в [GitHub Releases](https://github.com/skrashevich/station-airplay/releases).
+YAM хранит
 пакет и декларацию службы; запуск и автозапуск настраиваются отдельно.
 Профили других колонок, обновление, состояние сопряжения и удаление:
 [инструкция YAM](docs/yam.md). [Сборка и выпуск релизов](docs/releases.md).
