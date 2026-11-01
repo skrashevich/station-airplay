@@ -2,4 +2,7 @@
 /.omc/
 /dist/
 /station-airplay
+/.yam-tools/
+__pycache__/
+.DS_Store
 .DS_Store

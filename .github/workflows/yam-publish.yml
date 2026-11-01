@@ -1,0 +1,64 @@
+name: Publish to YAM registry
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing GitHub Release tag
+        required: true
+        default: v0.1
+permissions:
+  contents: read
+concurrency:
+  group: yam-registry-publish
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check registry credentials
+        env:
+          TOKEN: ${{ secrets.YAM_PUBLISH_TOKEN }}
+          KEY: ${{ secrets.YAM_AUTHOR_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$KEY" ]; then
+            echo 'Configure YAM_PUBLISH_TOKEN and YAM_AUTHOR_PRIVATE_KEY for namespace skrashevich first.' >&2
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/checkout@v4
+        with:
+          repository: nyakokitsu/yam
+          ref: c753064bb2320305df61c575440bf739e47551b8
+          path: .yam-tools
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .yam-tools
+      - run: cargo build --release --locked --manifest-path .yam-tools/Cargo.toml --bin yam-publish
+      - name: Download, verify and publish released artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          YAM_PUBLISH_TOKEN: ${{ secrets.YAM_PUBLISH_TOKEN }}
+          YAM_AUTHOR_PRIVATE_KEY: ${{ secrets.YAM_AUTHOR_PRIVATE_KEY }}
+        run: |
+          version=$(python3 scripts/release-version.py "$TAG")
+          gh release download "$TAG" --dir dist
+          (cd dist && sha256sum -c SHA256SUMS)
+          key=$(mktemp)
+          trap 'rm -f "$key"' EXIT
+          chmod 600 "$key"
+          printf '%s\n' "$YAM_AUTHOR_PRIVATE_KEY" > "$key"
+          export YAM_AUTHOR_KEY_FILE="$key"
+          while read -r platform arch; do
+            case "$platform" in ''|'#'*) continue ;; esac
+            mkdir -p dist/yam-publish-source
+            sed -e "s/@VERSION@/$version/g" -e "s/@PLATFORM@/$platform/g" \
+              packaging/yam/yam.yaml.in > dist/yam-publish-source/yam.yaml
+            .yam-tools/target/release/yam-publish publish \
+              --source dist/yam-publish-source --target "$platform" \
+              --artifact "dist/station-airplay-$version-$platform.yampkg"
+          done < packaging/yam/targets.tsv

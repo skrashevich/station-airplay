@@ -1,0 +1,55 @@
+name: Build release assets
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Test race safety and launchers
+        run: |
+          go test -race ./...
+          sh scripts/yam_test.sh
+      - name: Build standalone binaries and corresponding source
+        env:
+          VERSION: ${{ inputs.version }}
+        run: sh scripts/build.sh "$VERSION"
+      - uses: actions/checkout@v4
+        with:
+          repository: nyakokitsu/yam
+          ref: c753064bb2320305df61c575440bf739e47551b8
+          path: .yam-tools
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .yam-tools
+      - name: Build pinned YAM tools
+        run: cargo build --release --locked --manifest-path .yam-tools/Cargo.toml --bin yam-publish --bin yam
+      - name: Pack and verify all YAM profiles
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          python3 scripts/build-yam.py --version "$VERSION" --yam-source .yam-tools
+          python3 scripts/check-yam.py --version "$VERSION" --yam-source .yam-tools
+          cp scripts/install-yam.sh dist/install-yam.sh
+          python3 scripts/checksums.py "$VERSION"
+          cd dist
+          sha256sum -c SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          if-no-files-found: error
+          path: |
+            dist/*.tar.gz
+            dist/*.yampkg
+            dist/install-yam.sh
+            dist/SHA256SUMS

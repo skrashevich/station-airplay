@@ -1,0 +1,19 @@
+name: skrashevich/station-airplay
+version: @VERSION@
+license: Apache-2.0 AND LGPL-3.0-only AND MIT
+description: Автономный приёмник аудио AirPlay 2 для Яндекс Станций с root-доступом
+homepage: https://github.com/skrashevich/station-airplay
+targets: [@PLATFORM@]
+files:
+  bin/station-airplay: launcher.sh
+  share/skrashevich.station-airplay/bin/station-airplay: station-airplay
+  share/skrashevich.station-airplay/README.md: README.md
+  share/skrashevich.station-airplay/LICENSE: LICENSE
+  share/skrashevich.station-airplay/NOTICE: NOTICE
+  share/skrashevich.station-airplay/AUTHORS: AUTHORS
+  share/skrashevich.station-airplay/docs/: docs/
+services:
+  receiver:
+    exec: [bin/station-airplay]
+    restart: on-failure
+    after: [network]

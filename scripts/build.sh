@@ -2,7 +2,7 @@
 set -eu
 here=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
 cd "$here"
-version=${1:-0.1.0-dev}
+version=${1:-$(cat VERSION)}
 case "$version" in ''|*[!0-9A-Za-z._+-]*) echo 'Invalid version' >&2;exit 2;; esac
 stage=
 trap '[ -z "$stage" ] || rm -rf "$stage"' EXIT HUP INT TERM
@@ -19,7 +19,7 @@ for target in arm64 armv7;do
  mkdir -p "$stage/scripts" "$stage/docs/licenses"
  cp scripts/install.sh scripts/service.sh "$stage/scripts/"
  cp README.md NOTICE LICENSE AUTHORS "$stage/"
- cp docs/validation.md docs/embedding.md docs/SOURCE.md "$stage/docs/"
+ cp docs/validation.md docs/embedding.md docs/SOURCE.md docs/yam.md docs/releases.md "$stage/docs/"
  cp docs/licenses/* "$stage/docs/licenses/"
  python3 - "$stage" "dist/station-airplay-$version-linux-$target.tar.gz" <<'PYARCHIVE'
 import importlib.util
@@ -39,13 +39,4 @@ PYARCHIVE
 done
 
 python3 scripts/build-source-package.py --version "$version"
-python3 - "$version" <<'PYHASH'
-import hashlib
-from pathlib import Path
-import sys
-version = sys.argv[1]
-paths = [Path("dist") / f"station-airplay-{version}-{target}.tar.gz"
-         for target in ("linux-arm64", "linux-armv7", "source")]
-Path("dist/SHA256SUMS").write_text("".join(
-    f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n" for path in paths))
-PYHASH
+python3 scripts/checksums.py "$version"
