@@ -66,9 +66,18 @@ func (r *Rstp) Handle(c *rtsp.Conn, req *rtsp.Request) (response *rtsp.Response,
 			response = &rtsp.Response{StatusCode: rtsp.StatusBadRequest}
 			failure = nil
 		}
+		if r.logger != nil && response != nil {
+			cseq := ""
+			if values := req.Header["CSeq"]; len(values) > 0 {
+				cseq = values[0]
+			}
+			// Never log request/response bodies or arbitrary headers: pairing and
+			// stream setup carry private key material even over encrypted RTSP.
+			r.logger.Printf("RTSP response peer=%q method=%s path=%.256q cseq=%.32q status=%d", r.peerIP, req.Method, req.Path, cseq, response.StatusCode)
+		}
 	}()
 	if req.Method == "OPTIONS" {
-		return &rtsp.Response{StatusCode: rtsp.StatusOK, Header: rtsp.Header{"Public": {"GET, POST, SETUP, GET_PARAMETER, SET_PARAMETER, RECORD, SETPEERS, SETRATEANCHORTIME, FLUSHBUFFERED, TEARDOWN"}}}, nil
+		return &rtsp.Response{StatusCode: rtsp.StatusOK, Header: rtsp.Header{"Public": {"GET, POST, SETUP, GET_PARAMETER, SET_PARAMETER, RECORD, SETPEERS, SETRATEANCHORTIME, FLUSH, FLUSHBUFFERED, TEARDOWN"}}}, nil
 	}
 	if req.Method == "GET" {
 		return r.OnGetWeb(req)
@@ -97,6 +106,8 @@ func (r *Rstp) Handle(c *rtsp.Conn, req *rtsp.Request) (response *rtsp.Response,
 		return r.OnSetRateAnchorTime(req)
 	case "FLUSHBUFFERED":
 		return r.OnFlushBuffered(req)
+	case "FLUSH":
+		return r.OnFlushWeb(req)
 	case "TEARDOWN":
 		return r.OnTeardownWeb(req)
 	}

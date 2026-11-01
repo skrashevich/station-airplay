@@ -145,7 +145,7 @@ func openService(ctx context.Context, cfg settings) (_ service, failure error) {
 	if err != nil {
 		return nil, fmt.Errorf("mDNS: %w", err)
 	}
-	txt := []string{"ch=2", "cn=2", "et=4", "sr=44100", "ss=16", "tp=TCP", "vn=65537", "vs=366.0",
+	txt := []string{"ch=2", "cn=1,2", "et=4", "sr=44100", "ss=16", "tp=TCP,UDP", "vn=65537", "vs=366.0",
 		"am=StationAirPlay", "sf=0x4", "ft=" + airplayDevice().ToRecord(), "pk=" + hex.EncodeToString(s.hap.Device.PublicKey())}
 	s.raop, err = zeroconf.Register(strings.ReplaceAll(id.DeviceID, ":", "")+"@"+cfg.name, "_raop._tcp", "local.", actualPort, txt, []net.Interface{iface})
 	if err != nil {
@@ -173,7 +173,7 @@ func (s *protocolService) Serve(ctx context.Context) error {
 			return handlers.NewRstpHandler(s.hap, s.accessory, s.player)
 		}, s.settings.logger)
 	})
-	s.settings.logger.Printf("ready name=%q interface=%s address=%s event=%d codec=AAC-LC output=%s device=%s state=%s",
+	s.settings.logger.Printf("ready name=%q interface=%s address=%s event=%d codec=AAC-LC,ALAC output=%s device=%s state=%s",
 		s.settings.name, s.settings.iface, s.control.Addr(), s.hap.EventPort, s.settings.aplay, s.settings.device, s.settings.state)
 	err := <-results
 	cancel()

@@ -1,4 +1,4 @@
-// AirPlay 2 buffered TCP audio. Protocol framing derives from goplay2.
+// AirPlay 2 audio playout. Buffered TCP framing derives from goplay2.
 package audio
 
 import (
@@ -25,6 +25,7 @@ type Server struct {
 	PeerIP                       net.IP
 	mu                           sync.Mutex
 	listener                     net.Listener
+	realtime                     *realtimeState
 	conn                         net.Conn
 	output                       *codec.Output
 	playing, started, haveAnchor bool
@@ -231,7 +232,7 @@ func (s *Server) Close() {
 	s.once.Do(func() {
 		s.cancel()
 		s.mu.Lock()
-		l, c, old := s.listener, s.conn, s.output
+		l, c, old, realtime := s.listener, s.conn, s.output, s.realtime
 		s.output = nil
 		if !s.started {
 			close(s.done)
@@ -243,6 +244,10 @@ func (s *Server) Close() {
 		if c != nil {
 			c.Close()
 		}
+		if realtime != nil {
+			realtime.data.Close()
+			realtime.control.Close()
+		}
 		if old != nil {
 			old.Close()
 		}
@@ -251,21 +256,34 @@ func (s *Server) Close() {
 	})
 }
 func (s *Server) Done() <-chan struct{} { return s.done }
-func (s *Server) newDecoder() *codec.AacDecoder {
+
+type frameDecoder interface{ Decode([]byte) ([]byte, error) }
+
+func (s *Server) newDecoder() (frameDecoder, error) {
+	if s.realtime != nil {
+		return codec.NewAlacDecoder()
+	}
 	d := codec.NewAacDecoder()
 	asc := []byte{0x12, 0x10}
 	if s.rate == 48000 {
 		asc = []byte{0x11, 0x90}
 	}
-	d.InitRaw(asc)
-	return d
+	if err := d.InitRaw(asc); err != nil {
+		return nil, err
+	}
+	return d, nil
 }
 func (s *Server) play() {
 	defer close(s.done)
 	defer s.Close()
-	var decoder *codec.AacDecoder
+	var decoder frameDecoder
 	var epoch uint64 = math.MaxUint64
-	var lastSeq uint32
+	var lastSeq, lastTimestamp uint32
+	var lastSamples int
+	sequenceMask := uint32(0xffffff)
+	if s.realtime != nil {
+		sequenceMask = 0xffff
+	}
 	haveSeq := false
 	nextTimingLog := time.Time{}
 	for {
@@ -318,18 +336,27 @@ func (s *Server) play() {
 		}
 		s.mu.Lock()
 		valid := s.playing && s.generation == gen && s.buffer.Peek() == f
+		if valid && s.realtime != nil {
+			s.realtime.floor = f.Timestamp
+			s.realtime.haveFloor = true
+		}
 		s.mu.Unlock()
 		if !valid {
 			continue
 		}
-		if decoder == nil || epoch != gen || (haveSeq && (lastSeq+1)&0xffffff != f.SequenceNumber) {
-			decoder = s.newDecoder()
+		if decoder == nil || epoch != gen || (s.realtime == nil && haveSeq && (lastSeq+1)&sequenceMask != f.SequenceNumber) {
+			var err error
+			decoder, err = s.newDecoder()
+			if err != nil {
+				s.player.Logf("audio decoder: %v", err)
+				return
+			}
 			epoch = gen
 			haveSeq = false
 		}
 		pcm, err := decoder.Decode(f.encodedData)
 		if err != nil {
-			s.player.Logf("AAC decode: %v", err)
+			s.player.Logf("audio decode: %v", err)
 			return
 		}
 		s.mu.Lock()
@@ -350,6 +377,14 @@ func (s *Server) play() {
 		}
 		output := s.output
 		s.mu.Unlock()
+		packetSamples := len(pcm) / 4
+		// Keep RTP time when a small UDP gap could not be retransmitted.
+		if s.realtime != nil && haveSeq {
+			gap := int32(f.Timestamp - (lastTimestamp + uint32(lastSamples)))
+			if gap > 0 && gap <= int32(s.rate/4) {
+				pcm = append(make([]byte, int(gap)*4), pcm...)
+			}
+		}
 		gain := s.player.Gain()
 		for i := 0; i < len(pcm); i += 2 {
 			v := int16(binary.LittleEndian.Uint16(pcm[i:]))
@@ -361,6 +396,8 @@ func (s *Server) play() {
 		if err == nil && !stale && s.buffer.Peek() == f {
 			s.buffer.Pop()
 			lastSeq = f.SequenceNumber
+			lastTimestamp = f.Timestamp
+			lastSamples = packetSamples
 			haveSeq = true
 		}
 		s.mu.Unlock()

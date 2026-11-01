@@ -8,9 +8,10 @@ require (
 	github.com/ebitengine/purego v0.11.2
 	github.com/google/uuid v1.6.0
 	github.com/grandcat/zeroconf v1.0.0
+	github.com/mycophonic/saprobe-alac v1.0.0-rc3.0.20261101182127-4825eef7cbab
 	github.com/skrashevich/go-aac v0.1.1-0.20261014125626-800d9fa00267
-	golang.org/x/crypto v0.52.0
-	golang.org/x/sys v0.45.0
+	golang.org/x/crypto v0.57.0
+	golang.org/x/sys v0.49.0
 	howett.net/plist v1.0.1
 )
 
@@ -20,9 +21,9 @@ require (
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/tadglines/go-pkgs v0.0.0-20210623144937-b983b20f54f9 // indirect
 	github.com/xiam/to v0.0.0-20200126224905-d60d31e03561 // indirect
-	golang.org/x/mod v0.35.0 // indirect
-	golang.org/x/net v0.55.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
-	golang.org/x/tools v0.44.0 // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
+	golang.org/x/tools v0.51.0 // indirect
 )

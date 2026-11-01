@@ -1,6 +1,7 @@
 package probe
 
 import (
+	"bytes"
 	"context"
 	"github.com/skrashevich/station-airplay/audio"
 	"github.com/skrashevich/station-airplay/codec"
@@ -10,8 +11,10 @@ import (
 	"github.com/skrashevich/station-airplay/ptp"
 	"github.com/skrashevich/station-airplay/rtsp"
 	"io"
+	"log"
 	"net"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -37,6 +40,8 @@ func TestProbeExercisesEncryptedRTSPAndMedia(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	p := audio.NewPlayer(ctx, ptp.NewVirtualClock(0), codec.OutputOptions{Command: exe, Args: []string{"-test.run=TestProbeOutput", "--"}})
+	var logs bytes.Buffer
+	p.Logger = log.New(&logs, "", 0)
 	p.BindIP = "127.0.0.1"
 	l, _ := net.Listen("tcp", "127.0.0.1:0")
 	done := make(chan error, 1)
@@ -49,6 +54,11 @@ func TestProbeExercisesEncryptedRTSPAndMedia(t *testing.T) {
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+	for _, want := range []string{`method=POST path="pair-setup"`, `method=SETUP path="probe"`, "status=200", `timing="PTP"`, "streams_present=false", "streams_present=true", "type=103 ct=4", "key_bytes=32", "event_port=60003", "data_port="} {
+		if !strings.Contains(logs.String(), want) {
+			t.Errorf("missing %q in encrypted probe diagnostics: %s", want, &logs)
+		}
 	}
 	b, err := os.ReadFile(capture)
 	if err != nil {
