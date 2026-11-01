@@ -1,79 +1,79 @@
-# Validation — 2026-10-31
+# Проверка — 2026-10-31
 
-## Builds and automated checks
+## Сборки и автоматические проверки
 
-The full test suite, host race tests, vet, and CGO_ENABLED=0 dependency audit passed.
-Static ARM64 and ARMv7 cross-builds were produced. The ARM64 binary ran on both
-real Stations. ARMv7 is build-verified; no ARMv7 hardware was available in this test.
+Полный набор тестов, тесты гонок на хост-машине, vet и аудит зависимостей с CGO_ENABLED=0 пройдены.
+Собраны статические кросс-сборки ARM64 и ARMv7. Бинарный файл ARM64 запускался на обеих
+реальных Станциях. Для ARMv7 проверена только сборка: оборудования ARMv7 в этом тесте не было.
 
-Tests cover independent AAC reference PCM, encrypted packet tampering/truncation,
-RTSP bounds/concurrency, transient pairing and encryption transition, output
-process cleanup, volume ownership, future/blocked flush admission, fresh decoder
-state after resume, PTP selection/generation, timeline ID parsing, profile TLVs,
-identity/storage persistence, and installer ownership/update/uninstall.
+Тесты охватывают независимый эталонный PCM для AAC, подмену/усечение зашифрованных пакетов,
+границы и конкурентность RTSP, временное сопряжение и переход к шифрованию, освобождение
+процесса вывода, владение громкостью, допуск сброса для будущих/заблокированных данных, свежее
+состояние декодера после возобновления, выбор/поколение PTP, разбор идентификаторов временной шкалы,
+TLV профиля, сохранение идентичности/хранилища, а также владение/обновление/удаление в установщике.
 
-## Hardware and user verification
+## Проверка на оборудовании и пользователем
 
-- Midi: 192.168.88.66, firmware 0.369.1.46.4778262955.20261013.160.
-- Station 2: 192.168.88.24, firmware 0.369.1.46.4793639783.20261020.295.
-- Same static ARM64 executable and `aplay -D default` path on both; no model branches.
-- Synthetic SRP/encrypted RTSP/AAC sender completed on both.
-- User's iPhone discovered both receivers. User confirmed sound on Midi after the
-  extended PTP FollowUp fix, and later confirmed Station 2 playback.
-- Adding Station 2 to the group exposed further timing/lifecycle issues. The final
-  group retest initially failed because abrupt child termination stranded dmix IPC.
-  After lifecycle correction and verified one-time orphan cleanup, the user
-  confirmed both Stations play concurrently from the same iPhone. Both hardware
-  playback PCMs were subsequently observed RUNNING; Masters stayed unchanged.
-- Live Midi playback used stereo 44100-Hz PCM; ALSA converted it to 4 channels at
-  96000 Hz. Master remained 168,168; receiver RSS was about 12 MiB in one snapshot.
+- Midi: 192.168.88.66, прошивка 0.369.1.46.4778262955.20261013.160.
+- Станция 2: 192.168.88.24, прошивка 0.369.1.46.4793639783.20261020.295.
+- На обеих один и тот же статический исполняемый файл ARM64 и путь `aplay -D default`; ветвлений по моделям нет.
+- Синтетический отправитель SRP/зашифрованный RTSP/AAC успешно отработал на обеих.
+- iPhone пользователя обнаружил оба приёмника. Пользователь подтвердил звук на Midi после
+  исправления расширенного PTP FollowUp, а позже подтвердил воспроизведение на Станции 2.
+- Добавление Станции 2 в группу выявило дополнительные проблемы синхронизации/жизненного цикла. Финальная
+  повторная проверка группы сначала не прошла, поскольку резкое завершение дочернего процесса оставило «осиротевший» IPC dmix.
+  После исправления жизненного цикла и проверенной однократной очистки «осиротевших» ресурсов пользователь
+  подтвердил одновременное воспроизведение на обеих Станциях с одного iPhone. Затем было замечено,
+  что оба аппаратных PCM воспроизведения находятся в состоянии RUNNING; Master не изменились.
+- При воспроизведении на Midi в реальном времени использовался стерео-PCM 44100 Гц; ALSA преобразовывала его в 4 канала с частотой
+  96000 Гц. Master оставался 168,168; RSS приёмника на одном снимке составлял около 12 МиБ.
 
-## Defects reproduced and corrected during live testing
+## Дефекты, воспроизведённые и исправленные во время живого тестирования
 
-1. iPhone sends a 96-byte PTP FollowUp with a profile TLV. The dependency's timestamp
-   decoder requires the fixed ten-byte timestamp payload. A regression test now
-   verifies the standard header/body is parsed without interpreting trailing TLVs.
-2. Apple's anchor carries `networkTimeTimelineID`. The reference's `networkTimeId`
-   field ignored it. The real key now controls timing selection.
-3. Immediate SIGKILL of aplay stranded Midi dmix shared memory belonging to a
-   previously started receiver child. Its old creator PID was verified; playback
-   was closed and attachment counts were zero before the two orphaned segments
-   and their semaphore were removed once. The same check/recovery was performed
-   for receiver-owned orphaned resources on Station 2. This is not receiver startup behavior
-   and no automatic/global IPC deletion is implemented. Output cancellation now
-   sends SIGTERM and allows cleanup before the bounded kill fallback. A real child
-   signal-handler test proves cleanup is reached. A subsequent finite Midi probe
-   exited with no remaining dmix shared-memory segments.
+1. iPhone отправляет 96-байтный PTP FollowUp с TLV профиля. Декодер временных меток в зависимости
+   требует фиксированную десятибайтную полезную нагрузку временной метки. Регрессионный тест теперь
+   проверяет, что стандартные заголовок/тело разбираются без интерпретации завершающих TLV.
+2. Якорь Apple содержит `networkTimeTimelineID`. Поле `networkTimeId` эталонной реализации
+   его игнорировало. Теперь выбором времени управляет настоящий ключ.
+3. Немедленный SIGKILL aplay оставил на Midi «осиротевшую» разделяемую память dmix, принадлежавшую
+   ранее запущенному дочернему процессу приёмника. Был проверен PID его старого создателя; воспроизведение
+   было закрыто, а счётчики подключений равнялись нулю, прежде чем два «осиротевших» сегмента
+   и их семафор были однократно удалены. Та же проверка/восстановление была выполнена
+   для «осиротевших» ресурсов приёмника на Станции 2. Это не поведение приёмника при запуске,
+   и автоматическое/глобальное удаление IPC не реализовано. Отмена вывода теперь
+   отправляет SIGTERM и даёт время на освобождение ресурсов до ограниченного по времени принудительного завершения. Тест с реальным
+   обработчиком сигналов в дочернем процессе доказывает, что освобождение ресурсов выполняется. Последующий конечный тестовый прогон на Midi
+   завершился без оставшихся сегментов разделяемой памяти dmix.
 
-The original standalone validation predates optional boot integration. The
-inittab implementation is retained separately in cdx/inittab-autostart. The
-importable library itself changes no boot configuration or firmware services.
+Первоначальная проверка автономной версии предшествует необязательной интеграции с загрузкой.
+Реализация через inittab хранится отдельно в cdx/inittab-autostart. Сама импортируемая
+библиотека не изменяет ни конфигурацию загрузки, ни службы прошивки.
 
-## Limits
+## Ограничения
 
-No sample-accurate multiroom latency/drift measurement, extended-duration soak,
-other Station models, alternate iPhone applications/transports, or ARMv7 runtime
-validation has been completed. Synthetic sender tests use a deliberate past-time
-anchor and do not by themselves validate live clock synchronization.
+Не выполнены: измерение задержки/дрейфа мультирума с точностью до сэмпла, длительное тестирование на стабильность,
+проверка других моделей Станций, альтернативных приложений/транспортов iPhone и работы на ARMv7.
+Тесты синтетического отправителя используют намеренно прошедшее время якоря
+и сами по себе не подтверждают синхронизацию живых часов.
 
-## Embedded API and remote controls
+## Встраиваемый API и удалённое управление
 
-The module root is importable; the standalone command moved to cmd/station-airplay.
-Lifecycle tests cover concurrent/idempotent starts, startup rollback and retry,
-application cancellation, bounded Stop waiting, runtime failure reporting and
-exclusive resource cleanup before reuse. HomeKit state is receiver-scoped.
+Корень модуля импортируемый; автономная команда перенесена в cmd/station-airplay.
+Тесты жизненного цикла охватывают конкурентные/идемпотентные запуски, откат и повтор запуска,
+отмену контекста приложения, ограниченное ожидание Stop, сообщение о сбоях во время работы и
+исключительное освобождение ресурсов перед повторным использованием. Состояние HomeKit ограничено приёмником.
 
-Encrypted event tests independently derive keys, verify sender commands and
-acknowledgments, group destination archives, bounded input, cancellation,
-nonce progression, fragmented records and same-peer ownership conflicts.
-Regressions also cover paused media lifetime without idle expiry, local gain
-surviving partial teardown/re-setup, cross-owner volume safety and the AirPlay
-slider's linear -30..0 dB convention. Source restart is explicitly unsupported.
+Тесты зашифрованных событий независимо выводят ключи, проверяют команды отправителя и
+подтверждения, архивы назначения группы, ограниченный ввод, отмену,
+продвижение nonce, фрагментированные записи и конфликты владения для одного и того же узла.
+Регрессионные тесты также охватывают время жизни приостановленного медиа без истечения по простою, сохранение локального усиления
+при частичном завершении и повторной настройке, безопасность громкости между владельцами и линейную
+шкалу ползунка AirPlay -30..0 дБ. Перезапуск источника явно не поддерживается.
 
-Quasar Bridge integration recognizes enable/disable/status without LLM calls and
-routes generic media controls only while an AirPlay sender owns the session.
-User verification on Midi confirmed voice enable, pause, resume and next-track
-commands after embedding this receiver in Quasar Bridge. Both Stations were
-updated to on-demand embedded receivers, preserving standalone identity state.
-Station 2 startup/health was verified; its new voice/media controls were not
-separately tested by the user.
+Интеграция с Quasar Bridge распознаёт включение/выключение/статус без вызовов LLM и
+направляет общие медиакоманды, только пока сеансом владеет отправитель AirPlay.
+Пользователь на Midi подтвердил голосовые команды включения, паузы, возобновления и перехода к следующему треку
+после встраивания этого приёмника в Quasar Bridge. Обе Станции были
+обновлены до встроенных приёмников, включаемых по требованию, с сохранением состояния идентичности автономной версии.
+Запуск/работоспособность Станции 2 проверены; её новые голосовые/медиакоманды пользователем
+отдельно не тестировались.
