@@ -88,3 +88,46 @@ func (b *Buffer) Flush(from, until uint32) {
 func (b *Buffer) TrimBefore(rtp uint32) {
 	b.filter(func(f *PCMFrame) bool { return int32(f.Timestamp-rtp) >= 0 })
 }
+
+// tryPushOrdered is the nonblocking UDP queue. Timestamps are compared modulo
+// the RTP clock; the queue spans seconds, far less than half its 32-bit range.
+func (b *Buffer) tryPushOrdered(f *PCMFrame) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	index := len(b.frames)
+	for i, old := range b.frames {
+		if f.Timestamp == old.Timestamp || f.SequenceNumber == old.SequenceNumber {
+			return false
+		}
+		if index == len(b.frames) && int32(f.Timestamp-old.Timestamp) < 0 {
+			index = i
+		}
+	}
+	if len(b.frames) >= b.capacity {
+		if index == len(b.frames) {
+			return false
+		}
+		b.frames[len(b.frames)-1] = nil
+		b.frames = b.frames[:len(b.frames)-1]
+	}
+	b.frames = append(b.frames, nil)
+	copy(b.frames[index+1:], b.frames[index:])
+	b.frames[index] = f
+	b.notify()
+	return true
+}
+
+// clearAll returns the newest queued timestamp before releasing its frames.
+// Realtime callers use it to reject known stale packets after headerless FLUSH.
+func (b *Buffer) clearAll() (newest uint32, known bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(b.frames) > 0 {
+		newest = b.frames[len(b.frames)-1].Timestamp
+		known = true
+	}
+	clear(b.frames)
+	b.frames = b.frames[:0]
+	b.notify()
+	return newest, known
+}

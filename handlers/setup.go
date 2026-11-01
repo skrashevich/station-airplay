@@ -18,6 +18,7 @@ type setupStreamRequest struct {
 	CompressionType uint32 `plist:"ct"`
 	AudioFormat     uint64 `plist:"audioFormat"`
 	SampleRate      uint32 `plist:"sr"`
+	ControlPort     uint16 `plist:"controlPort"`
 }
 type setupRtsp struct {
 	GroupUUID      string               `plist:"groupUUID"`
@@ -53,6 +54,13 @@ func plistResponse(value any) (*rtsp.Response, error) {
 	return &rtsp.Response{StatusCode: rtsp.StatusOK, Header: rtsp.Header{"Content-Type": {"application/x-apple-binary-plist"}}, Body: body}, nil
 }
 func streamRate(v setupStreamRequest) (int, error) {
+	if v.Type == 96 {
+		if v.CompressionType != 2 || len(v.SharedKey) != 32 || v.AudioFormat != 1<<18 ||
+			(v.Spf != 0 && v.Spf != 352) || (v.SampleRate != 0 && v.SampleRate != 44100) {
+			return 0, fmt.Errorf("only realtime ALAC stereo S16 at 44100 Hz is supported")
+		}
+		return 44100, nil
+	}
 	if v.Type != 103 || v.CompressionType != 4 || len(v.SharedKey) != 32 || (v.Spf != 0 && v.Spf != 1024) {
 		return 0, fmt.Errorf("only buffered AAC-LC stereo is supported")
 	}
@@ -73,7 +81,18 @@ func streamRate(v setupStreamRequest) (int, error) {
 func (r *Rstp) OnSetupWeb(req *rtsp.Request) (*rtsp.Response, error) {
 	var v setupRtsp
 	if _, err := plist.Unmarshal(req.Body, &v); err != nil {
+		if r.logger != nil {
+			r.logger.Printf("RTSP SETUP parameters plist=invalid")
+		}
 		return &rtsp.Response{StatusCode: rtsp.StatusBadRequest}, nil
+	}
+	if r.logger != nil {
+		r.logger.Printf("RTSP SETUP parameters peer=%q path=%.256q timing=%.32q streams_present=%t streams=%d", r.peerIP, req.Path, v.TimingProtocol, v.Streams != nil, len(v.Streams))
+		// Allowlist protocol scalars, never serialize the decoded struct. In
+		// particular, shk and any unrecognized encryption fields stay private.
+		for i, s := range v.Streams[:min(len(v.Streams), 4)] {
+			r.logger.Printf("RTSP SETUP stream index=%d type=%d ct=%d audio_format=%#x sr=%d spf=%d key_bytes=%d", i, s.Type, s.CompressionType, s.AudioFormat, s.SampleRate, s.Spf, len(s.SharedKey))
+		}
 	}
 	r.volume = r.currentVolume()
 	if v.Streams == nil {
@@ -102,6 +121,9 @@ func (r *Rstp) OnSetupWeb(req *rtsp.Request) (*rtsp.Response, error) {
 		r.attachRemote(s)
 		s.PeerIP = r.peerIP
 		r.streams[req.Path] = s
+		if r.logger != nil {
+			r.logger.Printf("RTSP SETUP event event_port=%d timing_port=0", r.server.EventPort)
+		}
 		return plistResponse(setupEventResponse{EventPort: r.server.EventPort, PeerInfo: peerInfos{Addresses: r.server.Ips, Id: r.accessory.Pi.String()}})
 	}
 	if len(v.Streams) != 1 {
@@ -115,13 +137,25 @@ func (r *Rstp) OnSetupWeb(req *rtsp.Request) (*rtsp.Response, error) {
 	if s == nil {
 		return &rtsp.Response{StatusCode: rtsp.StatusSessionNotFound}, nil
 	}
-	port, err := s.Setup(v.Streams[0].SharedKey, rate)
+	stream := v.Streams[0]
+	var port, controlPort int
+	if stream.Type == 96 {
+		port, controlPort, err = s.SetupRealtime(stream.SharedKey, rate)
+		if err == nil {
+			s.SetRealtimeControlPort(stream.ControlPort)
+		}
+	} else {
+		port, err = s.Setup(stream.SharedKey, rate)
+	}
 	if err != nil {
 		return &rtsp.Response{StatusCode: rtsp.StatusNotEnoughBandwidth}, nil
 	}
 	s.SetTimingPeers(r.peers, r.clockID)
 	r.player.SetVolumeFor(s, r.volume)
-	return plistResponse(setupSteamsResponse{Streams: []setupStream{{BufferSize: globals.BufferSize, AudioFormat: v.Streams[0].AudioFormat, DataPort: uint16(port), TypeStream: 103}}})
+	if r.logger != nil {
+		r.logger.Printf("RTSP SETUP audio data_port=%d control_port=%d type=%d audio_format=%#x buffer_size=%d", port, controlPort, stream.Type, stream.AudioFormat, globals.BufferSize)
+	}
+	return plistResponse(setupSteamsResponse{Streams: []setupStream{{BufferSize: globals.BufferSize, AudioFormat: stream.AudioFormat, DataPort: uint16(port), ControlPort: uint16(controlPort), TypeStream: stream.Type}}})
 }
 func (r *Rstp) OnSetPeerWeb(req *rtsp.Request) (*rtsp.Response, error) {
 	var value any
