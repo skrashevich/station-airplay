@@ -1,5 +1,6 @@
 Station AirPlay is derived from ibiscum/goplay2 (Apache-2.0), commit 91a0a06b56a5b7ddbb573fe007f36d913d39cb02, by Alban Seurat and contributors.
 AAC decoder dependency: skrashevich/go-aac, based on AAC.js by Devon Govett and Audiocogs, LGPL-3.0. Source and pinned dependency details are distributed with this project.
+The owned station-pcm audio helper uses ebitengine/purego (Apache-2.0) to call the firmware's ALSA library without Cgo. Purego's license is included under docs/licenses/purego-Apache-2.0.txt and its exact source is retained in the corresponding-source archive. The receiver itself does not link purego or the firmware audio libraries.
 
 AirPlay 2 event command fields and event-key direction were independently
 implemented from protocol behavior cross-checked with the MIT-licensed

@@ -14,6 +14,8 @@ import (
 // Config configures a receiver without creating state or opening sockets.
 // DataDir is required and must be private to this receiver's persistent identity.
 // Nil volume and delay select -20 dB and 160 ms; explicit zero values are supported.
+// Empty Aplay selects the PCM payload embedded in the host executable. An
+// explicit Aplay value selects a custom aplay-compatible command without preflight.
 type Config struct {
 	Name, Interface, ListenAddress, DataDir, Aplay, Device string
 	OutputDelay                                            *time.Duration
@@ -23,6 +25,7 @@ type Config struct {
 
 type settings struct {
 	name, iface, listen, state, aplay, device string
+	ownedOutput                               bool
 	delay                                     time.Duration
 	volume                                    float64
 	logger                                    *log.Logger
@@ -35,8 +38,16 @@ func normalize(c Config) (settings, error) {
 		name = cmp.Or(host, "Station") + " AirPlay"
 	}
 	s := settings{name: name, iface: c.Interface, listen: cmp.Or(c.ListenAddress, ":7000"),
-		state: c.DataDir, aplay: cmp.Or(c.Aplay, "aplay"), device: cmp.Or(c.Device, "default"),
-		delay: 160 * time.Millisecond, volume: -20, logger: c.Logger}
+		state: c.DataDir, aplay: c.Aplay, device: cmp.Or(c.Device, "default"),
+		ownedOutput: c.Aplay == "",
+		delay:       160 * time.Millisecond, volume: -20, logger: c.Logger}
+	if s.ownedOutput {
+		executable, err := os.Executable()
+		if err != nil {
+			return s, fmt.Errorf("locate bundled PCM output: %w", err)
+		}
+		s.aplay = executable
+	}
 	if c.OutputDelay != nil {
 		s.delay = *c.OutputDelay
 	}

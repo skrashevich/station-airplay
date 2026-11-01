@@ -22,7 +22,7 @@ func main() {
 	flag.StringVar(&cfg.Interface, "interface", "", "Network interface (automatic by default)")
 	flag.StringVar(&cfg.ListenAddress, "listen", ":7000", "IPv4 RTSP address and port")
 	flag.StringVar(&cfg.DataDir, "data-dir", "/data/opt/station-airplay/state", "Persistent identity and pairing directory")
-	flag.StringVar(&cfg.Aplay, "aplay", "aplay", "Existing firmware aplay executable")
+	flag.StringVar(&cfg.Aplay, "aplay", "", "Custom aplay-compatible output (default: bundled station-pcm)")
 	flag.StringVar(&cfg.Device, "device", "default", "ALSA playback PCM")
 	cfg.OutputDelay = flag.Duration("output-delay", 160*time.Millisecond, "Estimated audio output latency")
 	cfg.InitialVolumeDB = flag.Float64("volume", -20, "Initial AirPlay volume in dB")
@@ -30,7 +30,7 @@ func main() {
 	showVersion := flag.Bool("version", false, "Print build version")
 	flag.Parse()
 	if *showVersion {
-		fmt.Printf("station-airplay %s (pure Go, firmware aplay output)\n", version)
+		fmt.Printf("station-airplay %s (pure Go receiver, bundled PCM output)\n", version)
 		return
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

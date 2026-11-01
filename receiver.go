@@ -58,7 +58,8 @@ type Receiver struct {
 	open    func(context.Context, settings) (service, error)
 }
 
-// New validates configuration only; it does not require aplay to be installed yet.
+// New validates configuration only; it neither executes nor requires an installed
+// output helper. Check and Start validate the bundled helper before opening PCM.
 func New(c Config) (*Receiver, error) {
 	cfg, err := normalize(c)
 	if err != nil {

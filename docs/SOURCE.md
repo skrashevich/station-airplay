@@ -1,27 +1,42 @@
-# Corresponding source and rebuilding
+# Соответствующий исходный код и пересборка
 
-Each standalone release includes `station-airplay-VERSION-source.tar.gz` beside
-the Linux ARM64 and ARMv7 binary archives. Download the source archive for the
-same version as your binary. `SHA256SUMS` identifies the matching archives.
-The source archive contains this receiver library, the standalone CLI, build
-and installation scripts, `go.mod`, `go.sum`, and the exact linked dependency
-sources under `vendor/`. Its `REBUILD.md` provides offline `CGO_ENABLED=0` build
-commands for both speaker architectures with an installed Go toolchain.
+Каждый автономный выпуск включает `station-airplay-VERSION-source.tar.gz` рядом
+с архивами бинарных файлов для Linux ARM64 и ARMv7. Скачивайте архив исходного кода
+той же версии, что и ваш бинарный файл. Соответствующие архивы указаны в `SHA256SUMS`.
+Архив исходного кода содержит эту библиотеку приёмника, автономный CLI, скрипты сборки
+и установки, `go.mod`, `go.sum` и точные исходные тексты всех подключаемых зависимостей
+в `vendor/`. Его `REBUILD.md` содержит команды офлайн-сборки с `CGO_ENABLED=0`
+для обеих архитектур колонок при установленном инструментарии Go.
+Также в него входят собственный проигрыватель `station-pcm`, общий
+сборщик `cmd/station-pcm-package`, его реализация пакета внутри исполняемого файла и закреплённая
+зависимость purego под Apache-2.0. Автономные пакеты и программы, встраивающие этот
+модуль, используют одну и ту же команду упаковки PCM; второй копии проигрывателя нет.
 
-The AAC decoder is [go-aac](https://github.com/skrashevich/go-aac), distributed
-under LGPL-3.0. The source archive includes the decoder source, its notices,
-and both the LGPL-3.0 and GPL-3.0 license texts in `docs/licenses/`. You can
-modify its vendored source and relink this application; the build does not
-require a signing key. See the source archive's `REBUILD.md` for replacement
-instructions. The receiver's Apache-2.0 license and attribution are in
-`LICENSE` and `NOTICE`; dependency-specific notices remain in `vendor/`.
+Декодер AAC — [go-aac](https://github.com/skrashevich/go-aac), распространяется
+под LGPL-3.0. Архив исходного кода включает исходный код декодера, его уведомления
+и тексты лицензий LGPL-3.0 и GPL-3.0 в `docs/licenses/`. Вы можете
+изменить его исходный код в vendor и заново скомпоновать это приложение; ключ подписи для сборки
+не требуется. Инструкции по замене см. в `REBUILD.md` архива исходного кода.
+Лицензия Apache-2.0 приёмника и атрибуция находятся в
+`LICENSE` и `NOTICE`; уведомления конкретных зависимостей остаются в `vendor/`.
 
-Developers create binary and source archives with `sh scripts/build.sh VERSION`.
-To create only the source archive from a checkout, run
-`python3 scripts/build-source-package.py --version VERSION`. Source packaging
-includes current tracked and untracked nonignored files, so release builds
-must run from the reviewed release checkout. Generated `dist/`, `work/`, and
-`vendor/` directories and macOS metadata files are excluded. The packaging
-step vendors dependencies into a temporary staging directory without changing
-the working checkout; dependency downloads may be needed during packaging.
-The resulting source archive builds without downloading Go modules.
+Разработчики создают архивы бинарных файлов и исходного кода командой `sh scripts/build.sh VERSION`.
+Чтобы создать только архив исходного кода из рабочей копии, выполните
+`python3 scripts/build-source-package.py --version VERSION`. Упаковка исходного кода
+включает текущие отслеживаемые и неотслеживаемые неигнорируемые файлы, поэтому сборки выпусков
+необходимо запускать из проверенной рабочей копии выпуска. Генерируемые каталоги `dist/`, `work/` и
+`vendor/`, а также файлы метаданных macOS исключаются. На этапе упаковки
+зависимости помещаются в vendor во временном каталоге подготовки без изменения
+рабочей копии; при упаковке может потребоваться загрузка зависимостей.
+Полученный архив исходного кода собирается без загрузки модулей Go.
+
+Команды приёмника и сборщика пакета остаются статическими. Сжатые нативные PCM-модули
+дописываются к ELF-файлу приёмника, поэтому устанавливается только один исполняемый файл.
+При проверке или включении AirPlay подходящий модуль извлекается в
+приватный кэш состояния приёмника. Он динамически использует glibc, libdl
+и libasound прошивки; эти системные библиотеки не включаются в пакет и не заменяются.
+Рантайм пакета выбирает ARMv7 или ARM64
+по фактической ELF-идентичности libasound, в том числе для 32-битного аудио-userland на
+64-битном ядре. Прошивки только с Android bionic не входят в поддерживаемую среду
+выполнения этого хелпера. В архиве исходного кода объясняется, как пересобрать и заменить
+полный единственный исполняемый файл вместе с его PCM-модулями.

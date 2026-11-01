@@ -24,6 +24,8 @@ case "${1:-status}" in
   iface=$(cat "$base/interface")
   device=$(cat "$base/device")
   aplay=$(cat "$base/aplay")
+  # A failing library/config preflight must fail start before reporting a PID.
+  "$binary" -check -name "$name" -interface "$iface" -device "$device" -aplay "$aplay" -data-dir "$base/state"
   nohup "$binary" -name "$name" -interface "$iface" -device "$device" -aplay "$aplay" -data-dir "$base/state" </dev/null >>"$base/receiver.log" 2>&1 &
   pid=$!;printf '%s\n' "$pid" >"$pidfile"
   sleep 1

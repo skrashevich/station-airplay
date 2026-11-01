@@ -1,46 +1,56 @@
 # Station AirPlay
 
-A standalone AirPlay 2 buffered-audio receiver in Go for rooted Linux Yandex Stations.
-Protocol basis: [ibiscum/goplay2](https://github.com/ibiscum/goplay2), commit `91a0a06`.
-AAC decoding: [skrashevich/go-aac](https://github.com/skrashevich/go-aac).
+Автономный приёмник буферизованного аудио AirPlay 2 на Go для Яндекс Станций с root-доступом и Linux.
+Основа протокола: [ibiscum/goplay2](https://github.com/ibiscum/goplay2), коммит `91a0a06`.
+Декодирование AAC: [skrashevich/go-aac](https://github.com/skrashevich/go-aac).
 
-The receiver and decoder build with **CGO_ENABLED=0**. Output uses the existing
-firmware `aplay -D default`, which preserves the device's ALSA plugin/mixer path.
-No FDK-AAC, PortAudio, PulseAudio, FFmpeg, shared-library loading, or Go runtime
-installation is required on the speaker. FFmpeg was used only to generate the
-synthetic test fixtures on the development host.
+Приёмник и декодер собираются в статический бинарный файл с **CGO_ENABLED=0**.
+Для вывода используется встроенный минимальный проигрыватель `station-pcm`, который вызывает
+ALSA-библиотеку прошивки и сохраняет её путь через плагин/микшер `default`. Системный `aplay`
+не нужен. Загрузка нативных аудиобиблиотек ограничена отдельным проигрывателем:
+приёмник и встраивающие его приложения не загружают аудиобиблиотеки в собственный процесс.
+Один исполняемый файл приёмника содержит сжатые PCM-модули. При проверке или
+включении AirPlay в приватный кэш состояния извлекается только подходящий
+модуль; никакой лаунчер или сопутствующий исполняемый файл не устанавливается.
+На колонке не требуются FDK-AAC, PortAudio, PulseAudio, FFmpeg или установленный
+рантайм Go. FFmpeg использовался только для генерации
+синтетических тестовых данных на машине разработчика.
 
-## Requirements and compatibility
+## Требования и совместимость
 
-- Rooted Linux with the existing `aplay` and a working ALSA `default` playback PCM.
-- Linux ARM64 or ARMv7; choose the architecture, not the Station model.
-- iPhone and receiver on a network allowing mDNS multicast and direct TCP/UDP.
-- TCP 7000 by default, dynamically allocated event/media TCP ports, UDP 319/320
-  for PTP, UDP 5353 for mDNS. Existing port conflicts fail without modifying services.
-- AAC-LC stereo, 44100/48000 Hz, AirPlay 2 buffered TCP audio (stream type 103).
-  The speaker's ALSA configuration performs hardware rate/channel conversion.
-- Software volume affects only this receiver's samples. Global mixer controls,
-  firmware configuration, OTA settings and Quasar processes are not modified.
+- Linux с root-доступом, glibc, libdl, libasound и рабочим PCM воспроизведения ALSA `default`.
+- Linux ARM64 или ARMv7; выбирайте архитектуру, а не модель Станции.
+- Пакеты ARM64 включают PCM-хелперы ARMv7 и ARM64, поскольку аудиобиблиотека прошивки
+  может оставаться 32-битной. Хелпер выбирается по её ELF ABI, без хешей версий
+  прошивки и без патчей под конкретные модели. Прошивки только с Android bionic
+  этим проигрывателем не поддерживаются.
+- iPhone и приёмник в сети, где разрешены мультикаст mDNS и прямые соединения TCP/UDP.
+- По умолчанию TCP 7000, динамически выделяемые TCP-порты событий/медиа, UDP 319/320
+  для PTP, UDP 5353 для mDNS. Конфликт с уже занятыми портами приводит к ошибке без изменения служб.
+- AAC-LC стерео, 44100/48000 Гц, буферизованное TCP-аудио AirPlay 2 (тип потока 103).
+  Аппаратное преобразование частоты и числа каналов выполняет конфигурация ALSA колонки.
+- Программная громкость влияет только на сэмплы этого приёмника. Глобальные регуляторы микшера,
+  конфигурация прошивки, настройки OTA и процессы Quasar не изменяются.
 
-AirPlay 1, ALAC, realtime UDP audio, video/screen mirroring and precision multiroom
-synchronization are not claimed. Basic group playback was confirmed by the user on Midi and Station 2 from one
-iPhone. Sample-accurate synchronization, long-term drift and relayed HomePod timing
-have not been validated. Relayed grandmaster timing and silent-clock wakeup
-are not implemented/validated for mixed HomePod groups.
-Applications requesting unsupported codecs/transports receive an explicit error.
-Opus is not used by this AAC transport and is not linked merely because a decoder is available.
+Поддержка AirPlay 1, ALAC, UDP-аудио реального времени, видео/повтора экрана и точной синхронизации
+мультирума не заявляется. Базовое групповое воспроизведение с одного iPhone на Midi и Станции 2
+подтверждено пользователем. Синхронизация с точностью до сэмпла, долговременный дрейф и ретранслируемое
+через HomePod время не проверялись. Ретранслируемое время грандмастера и пробуждение молчащих часов
+не реализованы/не проверены для смешанных групп с HomePod.
+Приложения, запрашивающие неподдерживаемые кодеки/транспорты, получают явную ошибку.
+Opus в этом AAC-транспорте не используется и не подключается только потому, что декодер для него существует.
 
-Live iPhone discovery and individual playback have been observed on Midi and
-Station 2. See [validation notes](docs/validation.md) for limitations and current results.
+Обнаружение с реального iPhone и индивидуальное воспроизведение наблюдались на Midi и
+Станции 2. Ограничения и текущие результаты описаны в [заметках о проверке](docs/validation.md).
 
-## Use as a Go dependency
+## Использование как зависимости Go
 
-The module root is now an importable library. The standalone command lives in
+Корень модуля теперь является импортируемой библиотекой. Автономная команда находится в
 cmd/station-airplay.
 
     go get github.com/skrashevich/station-airplay
 
-Create one Receiver for the application's lifetime:
+Создайте один Receiver на всё время жизни приложения:
 
     import airplay "github.com/skrashevich/station-airplay"
 
@@ -51,37 +61,38 @@ Create one Receiver for the application's lifetime:
     if err != nil {
         return err
     }
-    // Enable from a voice handler using the APPLICATION context:
+    // Включение из голосового обработчика с контекстом ПРИЛОЖЕНИЯ:
     if err := receiver.Start(appCtx); err != nil {
         return err
     }
-    // Disable later and wait for resource cleanup:
+    // Последующее отключение с ожиданием освобождения ресурсов:
     if err := receiver.Stop(requestCtx); err != nil {
         return err
     }
 
-New performs no startup I/O. Start returns after readiness and is idempotent;
-Stop waits for cleanup. Wait observes completion/errors and Status distinguishes
-enabled, connected and playing. Control sends pause/resume/stop/next/previous to
-the sender over its encrypted event channel; unavailable or unsupported controls
-return errors. SetVolume affects receiver PCM only. Imports install no signals,
-parse no flags and change no boot configuration or global logging.
+New не выполняет ввода-вывода при создании. Start возвращается после готовности и идемпотентен;
+Stop дожидается освобождения ресурсов. Wait сообщает о завершении/ошибках, а Status различает
+состояния «включён», «подключён» и «воспроизводит». Control отправляет отправителю команды
+pause/resume/stop/next/previous по его зашифрованному каналу событий; недоступные или
+неподдерживаемые команды возвращают ошибки. SetVolume влияет только на PCM приёмника. Импорт пакета
+не устанавливает обработчики сигналов, не разбирает флаги и не меняет ни конфигурацию загрузки,
+ни глобальное логирование.
 
-Keep the same DataDir to preserve pairing and disable any standalone instance
-before the embedded receiver takes its ports. See [embedding details](docs/embedding.md)
-and the [Quasar Bridge integration](https://github.com/skrashevich/quasar-bridge).
+Используйте тот же DataDir, чтобы сохранить сопряжение, и отключите автономный экземпляр,
+прежде чем встроенный приёмник займёт его порты. См. [подробности встраивания](docs/embedding.md)
+и [интеграцию с Quasar Bridge](https://github.com/skrashevich/quasar-bridge).
 
-## Install on a speaker
+## Установка на колонку
 
-Extract the matching archive into a temporary directory on the speaker, then run:
+Распакуйте подходящий архив во временный каталог на колонке и выполните:
 
 ```sh
 sh scripts/install.sh --name 'My Station AirPlay'
 ```
 
-The default prefix is `/data/opt/station-airplay`. It contains the binary, a small
-service script, configuration text files, private pairing state, PID and log.
-Installation starts the receiver but does **not** change boot configuration.
+Префикс по умолчанию — `/data/opt/station-airplay`. В нём находятся бинарный файл, небольшой
+служебный скрипт, текстовые файлы конфигурации, приватное состояние сопряжения, PID и журнал.
+Установка запускает приёмник, но **не** изменяет конфигурацию загрузки.
 
 ```sh
 /data/opt/station-airplay/service status
@@ -89,28 +100,38 @@ Installation starts the receiver but does **not** change boot configuration.
 /data/opt/station-airplay/service start
 ```
 
-Optional SysV autostart requires an **already writable** `/etc/init.d`:
+Необязательный автозапуск через SysV требует, чтобы `/etc/init.d` **уже был доступен для записи**:
 
 ```sh
 sh scripts/install.sh --name 'My Station AirPlay' --autostart
 ```
 
-This adds only `/etc/init.d/S98station-airplay`. The installer never remounts the
-firmware. If that directory is read-only, use the existing root environment's boot
-facility to invoke the dedicated `service start` command.
+Добавляется только `/etc/init.d/S98station-airplay`. Установщик никогда не перемонтирует
+прошивку. Если этот каталог доступен только для чтения, используйте средства загрузки
+существующего root-окружения, чтобы вызывать отдельную команду `service start`.
 
-Update by running the installer with the new archive. Pairing identity survives
-updates and name changes. Uninstall retains pairing state unless explicitly purged:
+Для обновления запустите установщик из нового архива. Идентичность сопряжения сохраняется
+при обновлениях и смене имени. Удаление сохраняет состояние сопряжения, если не запрошена полная очистка:
 
 ```sh
 sh scripts/install.sh --uninstall
 sh scripts/install.sh --uninstall --purge
 ```
 
-Custom locations use `--prefix`, and installations built locally can pass
-`--binary /path/to/station-airplay`. A nonempty unmanaged prefix is rejected.
+Для нестандартного расположения используйте `--prefix`; при локальной сборке можно передать
+`--binary /path/to/station-airplay`. Достаточно одного полного исполняемого файла с модулями;
+никаких сопутствующих файлов копировать не нужно. Перед остановкой работающей установки
+`-check` подготовленного исполняемого файла проверяет его встроенный вывод. Явные переопределения
+`--aplay /path/to/custom/player` по-прежнему поддерживаются и сохраняются при обновлениях;
+старая неявная настройка `aplay` переводится на встроенный вывод. Используйте `--aplay ''`,
+чтобы сбросить переопределение и вернуться к встроенному выводу.
+Если новая версия не запускается, восстанавливаются прежние бинарные файлы и настройки, а
+ранее работавшая служба перезапускается. Непустой префикс, не принадлежащий установщику, отклоняется.
 
-## Run manually
+## Ручной запуск
+
+Исполняемый файл приёмника содержит свои аудиомодули. Если приёмник собран локально,
+выполните описанный ниже шаг упаковки PCM, прежде чем копировать этот единственный исполняемый файл на колонку.
 
 ```sh
 ./station-airplay -name 'My Station AirPlay' -data-dir /data/opt/station-airplay/state
@@ -118,58 +139,88 @@ Custom locations use `--prefix`, and installations built locally can pass
 ./station-airplay -help
 ```
 
-Options include `-interface`, `-listen`, `-aplay`, `-device`, `-volume` (dB) and
-`-output-delay` (duration, default 160ms). Interface selection is automatic unless
-specified. The common device is `default`; selecting `hw:*` bypasses vendor mixing.
-Never use a display-name change as a reason to delete the persistent data directory.
+Среди параметров: `-interface`, `-listen`, `-aplay`, `-device`, `-volume` (дБ) и
+`-output-delay` (длительность, по умолчанию 160ms). Интерфейс выбирается автоматически, если
+не указан явно. Обычное устройство — `default`; выбор `hw:*` обходит микширование производителя.
+Никогда не удаляйте постоянный каталог данных из-за смены отображаемого имени.
 
-## Build and test
+## Сборка и тестирование
 
-Go 1.26 or later:
+Go 1.26 или новее:
 
 ```sh
 CGO_ENABLED=0 go test ./...
 go test -race ./...
 CGO_ENABLED=0 go vet ./...
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags '-s -w' -o station-airplay ./cmd/station-airplay
-CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags '-s -w' -o station-airplay ./cmd/station-airplay
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags '-s -w' -o station-airplay-arm64 ./cmd/station-airplay
+CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags '-s -w' -o station-airplay-armv7 ./cmd/station-airplay
+CGO_ENABLED=0 go run ./cmd/station-pcm-package -arch arm64 -binary station-airplay-arm64
+CGO_ENABLED=0 go run ./cmd/station-pcm-package -arch armv7 -binary station-airplay-armv7
 sh scripts/install_test.sh
 ```
 
-`go test -race` uses the host race instrumentation; distributed receiver binaries
-are always built with `CGO_ENABLED=0`. Audit the compiled dependency graph:
+`go test -race` использует инструментирование гонок на хост-машине; распространяемые бинарные файлы
+приёмника всегда собираются с `CGO_ENABLED=0`. Проверка графа скомпилированных зависимостей:
 
 ```sh
 CGO_ENABLED=0 go list -deps -f '{{if .CgoFiles}}{{.ImportPath}} {{.CgoFiles}}{{end}}' ./...
 ```
 
-The output must be empty. The synthetic sender exercises real SRP, encrypted RTSP,
-authenticated buffered AAC, and output delivery, but is not a substitute for an iPhone:
+Вывод должен быть пустым. Синтетический отправитель проверяет реальный SRP, зашифрованный RTSP,
+аутентифицированный буферизованный AAC и доставку на вывод, но не заменяет iPhone:
 
 ```sh
 CGO_ENABLED=0 go run ./cmd/airplay-probe -address RECEIVER_IP:7000 \
   -aac codec/testdata/tone.aac -volume -35
 ```
 
-## Troubleshooting
+Переиспользуемая команда упаковки собирает нужные PCM-модули и дописывает
+сжатый пакет к ELF-файлу приёмника; она не запускает тесты, ничего не устанавливает
+и не открывает аудио:
 
-Logs are in the installation prefix's `receiver.log`. `-check` verifies executable
-and interface prerequisites without opening audio. If discovery works but playback
-does not, inspect codec/setup errors, PTP timing-wait diagnostics and whether aplay
-is running. Do not change global mixer controls to repair a timing problem.
+```sh
+go run github.com/skrashevich/station-airplay/cmd/station-pcm-package \
+  -arch arm64 -binary /path/to/receiver -output /path/to/bundled-receiver
+```
 
-The receiver stops aplay with SIGTERM and waits for ALSA cleanup, with a bounded
-kill fallback. Abruptly killing an ALSA dmix owner can strand IPC state; normal
-pause/teardown must use the managed lifecycle rather than `kill -9`.
+Без `-output` упаковка выполняется на месте атомарно. Для 32-битного приёмника используйте
+`-arch armv7`. Необязательные аргументы `-armv7-binary` и `-arm64-binary` позволяют
+переиспользовать уже собранные модули. Архив исходного кода содержит эту команду и её
+рантайм пакета в каталоге vendor для офлайн-сборки встраивающих программ. Добавьте `-upx`, чтобы
+сжать неупакованный хост-файл командой `upx --ultra-brute --no-lzma` и проверить его перед
+дописыванием пакета. Старый собственный модуль, если он есть, сначала удаляется из подготовленной копии.
+Для уже упакованного входного файла `-upx` указывать нельзя; при неудачном сжатии переданный
+исполняемый файл остаётся нетронутым.
 
-## Attribution
+## Устранение неполадок
 
-Derived protocol files retain the goplay2 Apache-2.0 license and modification
-notices. AAC is the pinned LGPL-3.0 Go decoder; its license is included under
-`docs/licenses`. Module source revisions and checksums are in `go.mod`/`go.sum`.
-The PTP FollowUp/profile and timeline handling was cross-checked against the public
-Shairport Sync and NQPTP implementations. See `NOTICE` and `LICENSE`.
+Журнал находится в файле `receiver.log` в префиксе установки. `-check` проверяет предварительные
+требования к исполняемому файлу и интерфейсу, а также символы библиотеки собственного проигрывателя,
+не открывая аудио. Если обнаружение работает, а воспроизведение
+нет, изучите ошибки кодека/настройки, диагностику ожидания времени PTP и проверьте, запущен ли
+station-pcm. Не меняйте глобальные регуляторы микшера, чтобы исправить проблему с синхронизацией.
 
-Binary redistribution includes LGPL/GPL dependency notices and a corresponding
-source archive with vendored dependencies and offline rebuild instructions.
-See [source and rebuild information](docs/SOURCE.md).
+Рантайм пакета принимает необязательное абсолютное переопределение `STATION_PCM_LIBRARY` для
+нестандартной установки ALSA. Изменения окружения для библиотек/плагинов ограничиваются
+процессом проигрывателя, а явные переменные конфигурации ALSA сохраняются.
+Проигрыватель принимает чередующийся стерео-PCM S16_LE с частотой 44100/48000 Гц, обрабатывает частичные
+записи и опустошения буфера ALSA и использует преобразование/микширование ALSA, не выбирая
+аппаратные выходы и не изменяя регуляторы микшера.
+
+Приёмник останавливает проигрыватель сигналом SIGTERM и ждёт освобождения ресурсов ALSA, с ограниченным
+по времени принудительным завершением в качестве запасного варианта. Резкое завершение владельца ALSA dmix
+может оставить «осиротевшее» IPC-состояние; при обычной паузе/завершении сеанса нужно использовать
+управляемый жизненный цикл, а не `kill -9`.
+
+## Атрибуция
+
+Производные файлы протокола сохраняют лицензию Apache-2.0 проекта goplay2 и уведомления
+об изменениях. AAC декодируется закреплённой версией Go-декодера под LGPL-3.0; его лицензия находится в
+`docs/licenses`. Ревизии исходного кода модулей и контрольные суммы указаны в `go.mod`/`go.sum`.
+Отдельный PCM-проигрыватель использует purego под Apache-2.0; его лицензия также приложена.
+Обработка PTP FollowUp/профиля и временной шкалы сверялась с открытыми реализациями
+Shairport Sync и NQPTP. См. `NOTICE` и `LICENSE`.
+
+Распространение бинарных файлов сопровождается уведомлениями о зависимостях под LGPL/GPL и
+соответствующим архивом исходного кода с зависимостями в vendor и инструкциями по офлайн-пересборке.
+См. [сведения об исходном коде и пересборке](docs/SOURCE.md).

@@ -17,6 +17,12 @@ func TestOutputHelper(t *testing.T) {
 	if os.Getenv("STATION_OUTPUT_HELPER") == "" {
 		return
 	}
+	if path := os.Getenv("STATION_OUTPUT_ENV_CAPTURE"); path != "" {
+		if err := os.WriteFile(path, []byte(os.Getenv("STATION_OUTPUT_ENV_VALUE")), 0o600); err != nil {
+			os.Exit(2)
+		}
+		os.Exit(0)
+	}
 	if path := os.Getenv("STATION_OUTPUT_TERM"); path != "" {
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, syscall.SIGTERM)
@@ -111,5 +117,29 @@ func TestOutputCloseUnblocksBlockedWriter(t *testing.T) {
 	}
 	if err := o.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestOutputEnvironmentIsScopedToChild(t *testing.T) {
+	t.Setenv("STATION_OUTPUT_ENV_VALUE", "parent-value")
+	destination := filepath.Join(t.TempDir(), "child-env")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := OpenOutput(t.Context(), OutputOptions{Command: executable, Args: []string{"-test.run=TestOutputHelper", "--"}, Rate: 44100, Env: []string{"STATION_OUTPUT_HELPER=1", "STATION_OUTPUT_ENV_CAPTURE=" + destination, "STATION_OUTPUT_ENV_VALUE=child-value"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer output.Close()
+	if err = output.Drain(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	actual, err := os.ReadFile(destination)
+	if err != nil || string(actual) != "child-value" {
+		t.Fatalf("child environment: %q %v", actual, err)
+	}
+	if os.Getenv("STATION_OUTPUT_ENV_VALUE") != "parent-value" {
+		t.Fatal("process environment changed")
 	}
 }

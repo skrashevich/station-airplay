@@ -13,6 +13,7 @@ CGO_ENABLED=0 go vet ./...
 for target in arm64 armv7;do
  case "$target" in arm64) arch=arm64;arm=7;;armv7) arch=arm;arm=7;;esac
  CGO_ENABLED=0 GOOS=linux GOARCH="$arch" GOARM="$arm" go build -trimpath -ldflags "-s -w -X main.version=$version" -o "dist/station-airplay-linux-$target" ./cmd/station-airplay
+ CGO_ENABLED=0 go run ./cmd/station-pcm-package -arch "$target" -binary "dist/station-airplay-linux-$target"
  stage=$(mktemp -d)
  cp "dist/station-airplay-linux-$target" "$stage/station-airplay"
  mkdir -p "$stage/scripts" "$stage/docs/licenses"

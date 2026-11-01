@@ -1,49 +1,90 @@
-# Embedding a receiver
+# Встраивание приёмника
 
-The root module exports package stationairplay. The command is built from
-cmd/station-airplay; go build . no longer produces an executable.
+Корневой модуль экспортирует пакет stationairplay. Команда собирается из
+cmd/station-airplay; `go build .` больше не создаёт исполняемый файл.
 
-Use one Receiver and one persistent DataDir per physical receiver. New validates
-configuration without creating files, requiring aplay or opening sockets.
-Missing aplay, unavailable interfaces and occupied ports are Start errors.
-Failed startup closes resources opened so far and can be retried.
+Используйте один Receiver и один постоянный DataDir на каждый физический приёмник. New проверяет
+конфигурацию, не создавая файлов, не требуя бинарных файлов вывода, не запуская
+хелпер и не открывая сокеты. Пустой Config.Aplay выбирает PCM-модуль внутри
+хост-исполняемого файла. Сначала соберите статический хост-файл, затем с помощью
+`cmd/station-pcm-package -arch arm64 -binary /path/to/host` из station-airplay допишите нативные
+хелперы к этому же ELF-файлу (для 32-битного пакета используйте armv7). Устанавливайте только получившийся
+хост-файл; сопутствующих бинарных файлов хелперов или скриптов-лаунчеров нет.
+Обычный `go build` не создаёт PCM-модуль, поэтому при запуске AirPlay сообщается, что
+нужен шаг упаковки. Явно заданный Config.Aplay по-прежнему переопределяет вывод
+пользовательским исполняемым файлом, совместимым с aplay.
 
-Start takes the application context. A voice request's context expires when its
-response is delivered and must not own background playback. Start is synchronous
-and safe to call concurrently. Stop takes the caller's deadline; successful
-completion guarantees cleanup. An expired Stop deadline does not permit another
-run to overlap: Start returns ErrStopping until cleanup finishes.
-Wait observes runtime failure without altering lifetime; Status is safe to poll.
+Check и Start читают и проверяют модуль в исполняемом файле, выбирают нативный ABI
+и извлекают только этот хелпер в приватный кэш DataDir/pcm/<SHA-256>/. Отсутствующие
+или повреждённые хелперы в кэше атомарно восстанавливаются из исполняемого файла; соседние
+файлы не используются. New никогда ничего не извлекает. Для встроенного варианта
+по умолчанию Check и Start затем запускают `--check` хелпера из кэша с пятисекундным
+таймаутом до настройки идентичности и слушателей; для пользовательских переопределений проверяется только
+доступность исполняемого файла. Предварительная проверка загружает ALSA и проверяет точки входа, не
+открывая PCM и не воспроизводя звук. Конструкторы библиотек производителя всё же могут инициализировать
+собственное состояние. Некорректные модули, отсутствующие символы или загрузчики ALSA, недоступные
+интерфейсы и занятые порты являются ошибками Start. При неудачном запуске закрываются ресурсы,
+открытые к этому моменту, и запуск можно повторить; проверенный кэш может остаться для повторного использования.
 
-Config.OutputDelay and InitialVolumeDB are optional pointers: nil means 160 ms
-and -20 dB; explicit zero values remain valid. Config.Logger accepts a per-instance
-standard log.Logger, for example a slog.NewLogLogger adapter.
+Start принимает контекст приложения. Контекст голосового запроса истекает при доставке
+ответа и не должен владеть фоновым воспроизведением. Start синхронен
+и безопасен для конкурентного вызова. Stop принимает крайний срок вызывающей стороны; успешное
+завершение гарантирует освобождение ресурсов. Истёкший крайний срок Stop не позволяет новому
+запуску пересечься со старым: Start возвращает ErrStopping, пока освобождение не завершится.
+Wait сообщает о сбое во время работы, не влияя на время жизни; Status можно безопасно опрашивать.
 
-The library installs no init hooks or signal handlers and never calls os.Exit.
-Its HomeKit identity, sessions, player, event hub and PTP selection belong to each
-Receiver; there is no singleton receiver. The standard UDP 319/320 PTP ports mean
-instances on the same IP cannot run simultaneously. Select configuration by
-interface, architecture and ALSA device, without per-model branches.
+Config.OutputDelay и InitialVolumeDB — необязательные указатели: nil означает 160 мс
+и -20 дБ; явные нулевые значения остаются допустимыми. Config.Logger принимает отдельный для экземпляра
+стандартный log.Logger, например адаптер slog.NewLogLogger.
 
-Status.StateRunning means enabled and discoverable. Connected means a sender owns
-the audio session, and Playing reflects its reported rate, not an acoustic
-measurement. Stop disconnects the receiver entirely; Control("stop") asks the
-sender to stop music while retaining the receiver.
+Библиотека не устанавливает init-хуки или обработчики сигналов и никогда не вызывает os.Exit.
+Её идентичность HomeKit, сеансы, проигрыватель, концентратор событий и выбор PTP принадлежат каждому
+Receiver; синглтона приёмника нет. Из-за стандартных PTP-портов UDP 319/320
+экземпляры на одном IP не могут работать одновременно. Выбирайте конфигурацию по
+интерфейсу, архитектуре и устройству ALSA, без ветвлений по моделям.
 
-Pause, resume, next and previous require the sender to connect the authenticated
-event channel and supply its group UUID. Successful Control means an RTSP 2xx
-acknowledgment, not measured playback confirmation. Missing/unsupported commands
-return errors; restart has no implemented source opcode. SetVolume and relative
-volume commands affect local PCM gain and notify the phone when possible. Phone
-slider units map linearly onto -30..0 dB, with zero representing mute. No global
-ALSA mixer controls are changed.
+Status.StateRunning означает «включён и доступен для обнаружения». Connected означает, что отправитель владеет
+аудиосеансом, а Playing отражает сообщаемую им скорость воспроизведения, а не акустическое
+измерение. Stop полностью отключает приёмник; Control("stop") просит
+отправителя остановить музыку, сохраняя приёмник.
 
-Bridge recognizes explicit AirPlay enable/disable/status first. Only a currently
-connected sender owns generic media phrases such as «пауза», «продолжи»,
-«следующий трек» and «громкость пять». Other requests keep their normal Yandex,
-music queue, Home Assistant or LLM route.
+Pause, resume, next и previous требуют, чтобы отправитель подключил аутентифицированный
+канал событий и передал UUID своей группы. Успешный Control означает подтверждение RTSP 2xx,
+а не измеренное подтверждение воспроизведения. Отсутствующие/неподдерживаемые команды
+возвращают ошибки; для restart нет реализованного кода операции источника. SetVolume и относительные
+команды громкости меняют локальное усиление PCM и по возможности уведомляют телефон. Деления
+ползунка телефона линейно отображаются на диапазон -30..0 дБ, где ноль означает отключение звука. Глобальные
+регуляторы микшера ALSA не изменяются.
 
-For an existing standalone installation, configure Bridge with its state path,
-/data/opt/station-airplay/state, disable standalone autostart, start Bridge and
-enable AirPlay on demand. Retain the old installation for rollback and do not run
-both listeners on the same IP.
+Bridge в первую очередь распознаёт явные команды включения/выключения/статуса AirPlay. Только подключённый
+в данный момент отправитель обрабатывает общие медиафразы вроде «пауза», «продолжи»,
+«следующий трек» и «громкость пять». Остальные запросы идут обычным маршрутом: Яндекс,
+очередь музыки, Home Assistant или LLM.
+
+Для существующей автономной установки укажите в настройках Bridge путь её состояния,
+/data/opt/station-airplay/state, отключите автономный автозапуск, запустите Bridge и
+включайте AirPlay по требованию. Сохраните старую установку для отката и не запускайте
+оба слушателя на одном IP.
+
+
+Реализация PCM, формат пакета в одном файле и загрузчик времени выполнения принадлежат
+station-airplay. Рантайм выбирает хелпер по ELF-классу/машине фактической библиотеки ALSA
+и соответствующему загрузчику glibc, которые могут отличаться от архитектуры хост-бинарного файла
+Go. Конфигурация загрузчика ограничивается дочерним процессом, а конфигурация ALSA прошивки
+сохраняется для преобразования и микширования. Встраивающим программам не нужны
+собственный проигрыватель, привязки ALSA, выбор ABI, распаковщик или предварительная
+проверка вывода. Корневая библиотека и приёмник по-прежнему собираются статически с
+CGO_ENABLED=0; нативную ALSA загружает только изолированный хелпер из кэша. Метаданные ZIP
+содержат ABI хелпера, SHA-256 и размер ELF-префикса. Упаковка заменяет старый
+модуль, а не увеличивает исполняемый файл при каждой сборке. Необязательный флаг `-upx`
+команды упаковки удаляет старый модуль из подготовленной копии,
+сжимает и проверяет хост-файл, затем дописывает итоговый модуль. С `-upx` используйте
+неупакованный входной файл; для уже упакованного хост-файла флаг не указывайте.
+
+Хелпер принимает сырой стерео-поток S16_LE с частотой 44100 или 48000 Гц и обрабатывает частичные
+кадры/записи, опустошения буфера, отмену и доигрывание буфера при EOF. Регуляторы микшера
+он не изменяет. STATION_PCM_LIBRARY — необязательное переопределение пути к нативной
+библиотеке; хешей версий прошивки и ветвлений по моделям нет. Этот
+бэкенд требует Linux с совместимыми библиотеками glibc/ALSA. Для других аудиосред выполнения,
+включая системы только с Android bionic без ALSA, нужна подходящая пользовательская
+команда вывода. Успешная предварительная проверка не может доказать наличие звука из физической колонки.

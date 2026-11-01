@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strconv"
 	"sync"
@@ -14,6 +15,7 @@ import (
 type OutputOptions struct {
 	Command string
 	Args    []string
+	Env     []string
 	Device  string
 	Rate    int
 }
@@ -56,6 +58,7 @@ func OpenOutput(ctx context.Context, opts OutputOptions) (*Output, error) {
 	args := append([]string(nil), opts.Args...)
 	args = append(args, "-q", "-D", opts.Device, "-t", "raw", "-f", "S16_LE", "-c", "2", "-r", strconv.Itoa(opts.Rate))
 	cmd := exec.CommandContext(ctx, opts.Command, args...)
+	cmd.Env = append(os.Environ(), opts.Env...)
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = time.Second
 	o := &Output{cancel: cancel, done: make(chan struct{})}

@@ -5,9 +5,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/grandcat/zeroconf"
 	"github.com/skrashevich/station-airplay/audio"
@@ -15,13 +17,17 @@ import (
 	"github.com/skrashevich/station-airplay/config"
 	"github.com/skrashevich/station-airplay/handlers"
 	"github.com/skrashevich/station-airplay/homekit"
+	"github.com/skrashevich/station-airplay/internal/pcmbundle"
 	"github.com/skrashevich/station-airplay/ptp"
 	"github.com/skrashevich/station-airplay/rtsp"
 )
 
-// CheckResult describes prerequisites without opening listeners or creating state.
+// CheckResult describes prerequisites without opening listeners or identity files.
+// It may create or repair the private PCM helper cache in DataDir.
+// Checking the owned output loads ALSA in a child process without opening a PCM.
 type CheckResult struct {
 	Interface, IP, Aplay, Device, DataDir string
+	outputEnv                             []string
 }
 
 func (r *Receiver) Check(ctx context.Context) (CheckResult, error) {
@@ -34,16 +40,47 @@ func environment(ctx context.Context, s settings) (net.Interface, CheckResult, e
 	if err := ctx.Err(); err != nil {
 		return net.Interface{}, result, err
 	}
-	aplay, err := exec.LookPath(s.aplay)
-	if err != nil {
-		return net.Interface{}, result, fmt.Errorf("firmware aplay is required: %w", err)
+	var command string
+	var outputEnv []string
+	var err error
+	if s.ownedOutput {
+		command, outputEnv, err = pcmbundle.Resolve(ctx, s.aplay, s.state)
+		if err != nil {
+			return net.Interface{}, result, err
+		}
+		if err = checkOutput(ctx, command, outputEnv); err != nil {
+			return net.Interface{}, result, err
+		}
+	} else {
+		command, err = exec.LookPath(s.aplay)
+		if err != nil {
+			return net.Interface{}, result, fmt.Errorf("audio output command is required: %w", err)
+		}
 	}
 	iface, ip, err := selectInterface(s.iface)
 	if err != nil {
 		return net.Interface{}, result, err
 	}
-	result = CheckResult{Interface: iface.Name, IP: ip.String(), Aplay: aplay, Device: s.device, DataDir: s.state}
+	result = CheckResult{Interface: iface.Name, IP: ip.String(), Aplay: command, Device: s.device, DataDir: s.state, outputEnv: outputEnv}
 	return iface, result, ctx.Err()
+}
+
+// Only the bundled helper implements --check. It resolves the ALSA API without
+// opening a PCM; vendor dlopen constructors may still initialize library state.
+func checkOutput(ctx context.Context, command string, env []string) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	process := exec.CommandContext(ctx, command, "--check")
+	process.Env = append(os.Environ(), env...)
+	process.WaitDelay = time.Second
+	output, err := process.CombinedOutput()
+	if ctx.Err() != nil {
+		err = ctx.Err()
+	}
+	if err != nil {
+		return fmt.Errorf("bundled PCM output check failed: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
 }
 
 type protocolService struct {
@@ -63,6 +100,7 @@ func openService(ctx context.Context, cfg settings) (_ service, failure error) {
 		return nil, err
 	}
 	s := &protocolService{settings: cfg}
+	s.settings.aplay = env.Aplay
 	defer func() {
 		if failure != nil {
 			s.Close()
@@ -98,7 +136,7 @@ func openService(ctx context.Context, cfg settings) (_ service, failure error) {
 		return nil, err
 	}
 	s.timing.Logger = cfg.logger
-	s.player = audio.NewPlayer(ctx, clock, codec.OutputOptions{Command: env.Aplay, Device: cfg.device})
+	s.player = audio.NewPlayer(ctx, clock, codec.OutputOptions{Command: env.Aplay, Device: cfg.device, Env: env.outputEnv})
 	s.player.Logger = cfg.logger
 	s.player.BindIP, s.player.Timing, s.player.OutputDelay = env.IP, s.timing, cfg.delay
 	s.player.SetVolume(cfg.volume)
