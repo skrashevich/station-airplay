@@ -30,7 +30,7 @@ func main() {
 	cfg.InitialVolumeDB = flag.Float64("volume", -20, "Initial AirPlay volume in dB")
 	check := flag.Bool("check", false, "Check prerequisites without opening listeners or audio")
 	showVersion := flag.Bool("version", false, "Print build version")
-	voiceAddress := flag.String("alice-ipc", "", "Experimental local Alice listener, e.g. 127.0.0.1:9875; empty disables it")
+	voiceAddress := flag.String("alice-ipc", "127.0.0.1:9875", "Local Alice IPC address; empty disables voice media commands")
 	voiceCancel := flag.String("alice-cancel", "dialog", "Experimental cancellation: dialog or clear (dialog and queue)")
 	flag.Parse()
 	if *showVersion {
