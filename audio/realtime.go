@@ -164,7 +164,7 @@ func (s *Server) receiveRealtime(conn *net.UDPConn, control bool) {
 				state.remoteControl = &net.UDPAddr{IP: append(net.IP(nil), peer.IP...), Port: peer.Port}
 				s.mu.Unlock()
 				s.player.SetTimingPeers(s, []net.IP{s.PeerIP}, clock)
-				s.applyRealtimeSync(rtp, network)
+				s.applyRealtimeSync(rtp, network, clock)
 				continue
 			}
 			// Retransmission replies carry a four-byte control header before RTP.
@@ -257,7 +257,7 @@ func (s *Server) FlushRealtime(rtp uint32) {
 
 // Periodic realtime sync updates the moving clock mapping. Unlike a seek, a
 // normal sync must not restart the ALSA output or discard decoder progress.
-func (s *Server) applyRealtimeSync(rtp uint32, network time.Time) {
+func (s *Server) applyRealtimeSync(rtp uint32, network time.Time, timeline uint64) {
 	s.mu.Lock()
 	starting := !s.playing
 	if starting {
@@ -265,6 +265,7 @@ func (s *Server) applyRealtimeSync(rtp uint32, network time.Time) {
 	}
 	s.anchorRTP = rtp
 	s.anchorTime = network
+	s.anchorClockID = timeline
 	s.haveAnchor = true
 	s.playing = true
 	s.buffer.TrimBefore(rtp)

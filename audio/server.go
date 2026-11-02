@@ -31,6 +31,7 @@ type Server struct {
 	playing, started, haveAnchor bool
 	generation                   uint64
 	anchorRTP                    uint32
+	timingClockID, anchorClockID uint64
 	anchorTime                   time.Time // network clock, converted afresh as PTP converges
 	discarded                    []sequenceRange
 	buffer                       *Buffer
@@ -186,6 +187,7 @@ func (s *Server) SetRateAnchorTime(rtp uint32, network time.Time) {
 	}
 	s.anchorRTP = rtp
 	s.anchorTime = network
+	s.anchorClockID = s.timingClockID
 	s.haveAnchor = true
 	s.playing = true
 	s.mu.Unlock()
@@ -195,6 +197,9 @@ func (s *Server) SetRateAnchorTime(rtp uint32, network time.Time) {
 	s.signal()
 }
 func (s *Server) SetTimingPeers(peers []net.IP, id uint64) {
+	s.mu.Lock()
+	s.timingClockID = id
+	s.mu.Unlock()
 	all := append([]net.IP{s.PeerIP}, peers...)
 	s.player.SetTimingPeers(s, all, id)
 }
@@ -291,7 +296,7 @@ func (s *Server) play() {
 			return
 		}
 		s.mu.Lock()
-		playing, gen, anchor, anchorRTP := s.playing, s.generation, s.anchorTime, s.anchorRTP
+		playing, gen, anchor, anchorRTP, clockID := s.playing, s.generation, s.anchorTime, s.anchorRTP, s.anchorClockID
 		s.mu.Unlock()
 		if !playing {
 			select {
@@ -317,10 +322,23 @@ func (s *Server) play() {
 			}
 			continue
 		}
-		until := anchor.Sub(s.player.Clock.Now()) + time.Duration(int64(int32(f.Timestamp-anchorRTP)))*time.Second/time.Duration(s.rate) - s.player.OutputDelay
+		now, known := s.player.Clock.NowForTimeline(clockID)
+		if !known {
+			timer := time.NewTimer(100 * time.Millisecond)
+			select {
+			case <-timer.C:
+			case <-s.ctx.Done():
+				timer.Stop()
+				return
+			case <-s.wake:
+				timer.Stop()
+			}
+			continue
+		}
+		until := anchor.Sub(now) + time.Duration(int64(int32(f.Timestamp-anchorRTP)))*time.Second/time.Duration(s.rate) - s.player.OutputDelay
 		if until > 0 {
 			if until > time.Second && time.Now().After(nextTimingLog) {
-				s.player.Logf("audio timing wait=%v queued=%d frame=%d anchor=%d anchor_sec=%d clock_sec=%d", until.Truncate(time.Millisecond), s.buffer.Len(), f.Timestamp, anchorRTP, anchor.Unix(), s.player.Clock.Now().Unix())
+				s.player.Logf("audio timing wait=%v queued=%d frame=%d anchor=%d anchor_sec=%d clock_sec=%d", until.Truncate(time.Millisecond), s.buffer.Len(), f.Timestamp, anchorRTP, anchor.Unix(), now.Unix())
 				nextTimingLog = time.Now().Add(5 * time.Second)
 			}
 			timer := time.NewTimer(min(until, 100*time.Millisecond))
