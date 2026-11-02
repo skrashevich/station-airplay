@@ -15,6 +15,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - uses: ./.github/actions/setup-upx
       - name: Test race safety and launchers
         run: |
           go test -race ./...
@@ -23,6 +24,7 @@ jobs:
       - name: Build standalone binaries and corresponding source
         env:
           VERSION: ${{ inputs.version }}
+          COMPRESS_UPX: '1'
         run: sh scripts/build.sh "$VERSION"
       - uses: actions/checkout@v7
         with:

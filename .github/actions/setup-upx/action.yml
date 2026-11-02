@@ -1,0 +1,21 @@
+name: Set up UPX
+description: Install the pinned, checksum-verified Linux x86-64 UPX release
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        set -euo pipefail
+        version=5.2.1
+        archive="upx-$version-amd64_linux.tar.xz"
+        work=$(mktemp -d)
+        trap 'rm -rf "$work"' EXIT
+        curl --fail --silent --show-error --location --retry 3 \
+          "https://github.com/upx/upx/releases/download/v$version/$archive" \
+          --output "$work/$archive"
+        echo "402162aad30af47e60dbd767fb2e64ca394ace9727ba1f40283641f1d1b91657  $work/$archive" | sha256sum -c -
+        tar -xJf "$work/$archive" -C "$work"
+        mkdir -p "$RUNNER_TEMP/station-airplay-upx"
+        install -m 755 "$work/upx-$version-amd64_linux/upx" "$RUNNER_TEMP/station-airplay-upx/upx"
+        echo "$RUNNER_TEMP/station-airplay-upx" >> "$GITHUB_PATH"
+        "$RUNNER_TEMP/station-airplay-upx/upx" --version

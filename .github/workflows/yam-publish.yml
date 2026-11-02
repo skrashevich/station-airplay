@@ -24,6 +24,9 @@ jobs:
             echo 'Configure YAM_PUBLISH_TOKEN and YAM_AUTHOR_PRIVATE_KEY for namespace skrashevich first.' >&2
             exit 1
           fi
+      # Load the workflow's pinned UPX action before checking out the release tag.
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-upx
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag }}
@@ -36,8 +39,44 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .yam-tools
-      - run: cargo build --release --locked --manifest-path .yam-tools/Cargo.toml --bin yam-publish
-      - name: Download, verify and publish released artifacts
+      - run: cargo build --release --locked --manifest-path .yam-tools/Cargo.toml --bin yam-publish --bin yam
+      - name: Download and verify compressed release packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          version=$(python3 scripts/release-version.py "$TAG")
+          gh release download "$TAG" --dir dist
+          (cd dist && sha256sum -c SHA256SUMS)
+          root=$(mktemp -d)
+          trap 'rm -rf "$root"' EXIT
+          # Validate every profile before making the first registry upload.
+          while read -r platform _arch; do
+            case "$platform" in ''|'#'*) continue ;; esac
+            .yam-tools/target/release/yam --profiles .yam-tools/platforms \
+              --platform "$platform" --root "$root/$platform" install --yes \
+              "dist/station-airplay-$version-$platform.yampkg"
+            # UPX's integrity test needs the ELF without the appended PCM ZIP.
+            python3 - "$root/$platform/share/skrashevich.station-airplay/bin/station-airplay" "$root/receiver" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+          import zipfile
+
+          binary = Path(sys.argv[1])
+          with zipfile.ZipFile(binary) as bundle:
+              if bundle.comment != b"station-airplay-pcm-v1":
+                  raise ValueError("missing PCM bundle")
+              size = json.loads(bundle.read("pcm/manifest.json"))["host_size"]
+              if type(size) is not int or size <= 0 or size != min(info.header_offset for info in bundle.infolist()):
+                  raise ValueError("invalid PCM host size")
+          with binary.open("rb") as source:
+              Path(sys.argv[2]).write_bytes(source.read(size))
+          PY
+            upx -t "$root/receiver"
+          done < packaging/yam/targets.tsv
+      - name: Publish verified release packages
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -46,14 +85,12 @@ jobs:
           YAM_AUTHOR_PRIVATE_KEY: ${{ secrets.YAM_AUTHOR_PRIVATE_KEY }}
         run: |
           version=$(python3 scripts/release-version.py "$TAG")
-          gh release download "$TAG" --dir dist
-          (cd dist && sha256sum -c SHA256SUMS)
           key=$(mktemp)
           trap 'rm -f "$key"' EXIT
           chmod 600 "$key"
           printf '%s\n' "$YAM_AUTHOR_PRIVATE_KEY" > "$key"
           export YAM_AUTHOR_KEY_FILE="$key"
-          while read -r platform arch; do
+          while read -r platform _arch; do
             case "$platform" in ''|'#'*) continue ;; esac
             mkdir -p dist/yam-publish-source
             sed -e "s/@VERSION@/$version/g" -e "s/@PLATFORM@/$platform/g" \
