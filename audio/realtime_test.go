@@ -208,6 +208,7 @@ func TestRealtimeUDPDecodesReorderedALACAndPeriodicSync(t *testing.T) {
 	}
 	data.Write(packets[0])
 	waitRealtimeCondition(t, func() bool { return s.buffer.Len() == 3 })
+	clock.OffsetForTimeline(0x1234, 0)
 	stamp := clock.Now().Add(30 * time.Millisecond)
 	packet := syncPacket(first+realtimeAnchorOffset, uint64(stamp.UnixNano()), 0x1234)
 	if _, err := control.Write(packet); err != nil {
@@ -387,7 +388,7 @@ func TestRealtimeMissingPacketConcealsGapAtPlayoutDeadline(t *testing.T) {
 	for _, f := range []*PCMFrame{{TcpPacket: TcpPacket{SequenceNumber: 1, Timestamp: 0}, encodedData: bytes.Clone(payload)}, {TcpPacket: TcpPacket{SequenceNumber: 3, Timestamp: 704}, encodedData: bytes.Clone(payload)}} {
 		s.enqueueRealtime(f)
 	}
-	s.applyRealtimeSync(0, clock.Now())
+	s.applyRealtimeSync(0, clock.Now(), 0)
 	waitRealtimeCondition(t, func() bool { b, err := os.ReadFile(capture); return err == nil && len(b) == len(pcm)*3 })
 	got, _ := os.ReadFile(capture)
 	want := append(bytes.Clone(pcm), make([]byte, len(pcm))...)
@@ -417,7 +418,7 @@ func TestRealtimeFlushAllRetainsHighBitTimelineFloor(t *testing.T) {
 	if !s.enqueueRealtime(&PCMFrame{TcpPacket: TcpPacket{SequenceNumber: 3, Timestamp: 0x800002c0}}) {
 		t.Fatal("new high-bit RTP timeline rejected")
 	}
-	s.applyRealtimeSync(0x800002c0, p.Clock.Now())
+	s.applyRealtimeSync(0x800002c0, p.Clock.Now(), 0)
 	s.mu.Lock()
 	playing, anchor := s.playing, s.haveAnchor
 	s.mu.Unlock()

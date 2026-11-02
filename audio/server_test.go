@@ -189,3 +189,51 @@ func TestAnchorRecoversAfterPTPClockConverges(t *testing.T) {
 		t.Fatalf("output=%d err=%v", len(b), err)
 	}
 }
+
+// Keeping only the newest PTP epoch used to strand an existing buffered anchor
+// for 35 hours when a HomePod joined the iPhone's group without a new anchor.
+func TestBufferedAnchorSurvivesGroupGrandmasterChanges(t *testing.T) {
+	t.Setenv("STATION_AUDIO_HELPER", "1")
+	dest := filepath.Join(t.TempDir(), "pcm")
+	t.Setenv("STATION_AUDIO_CAPTURE", dest)
+	exe, _ := os.Executable()
+	clock := ptp.NewVirtualClock(0)
+	p := NewPlayer(t.Context(), clock, codec.OutputOptions{Command: exe, Args: []string{"-test.run=TestAudioOutputHelper", "--"}})
+	p.BindIP = "127.0.0.1"
+	s := NewServer(p)
+	defer s.Close()
+	port, err := s.Setup(make([]byte, 32), 44100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", fmtPort(port)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	const phone = uint64(0x783f4dcda2660008)
+	const homepod = uint64(0x58d3492eabbf0008)
+	clock.OffsetForTimeline(phone, -181620*time.Second)
+	s.SetTimingPeers(nil, phone)
+	s.SetRateAnchorTime(0, clock.Now().Add(100*time.Millisecond))
+	clock.OffsetForTimeline(homepod, 126990*time.Second)
+	s.enqueue(&PCMFrame{TcpPacket: TcpPacket{SequenceNumber: 0, Timestamp: 0}, encodedData: fixturePayload(t, 0)})
+	waitEmpty(t, s)
+	// A replacement anchor is already in the newly elected GM's domain.
+	s.SetTimingPeers(nil, homepod)
+	s.SetRateAnchorTime(1024, clock.Now())
+	s.enqueue(&PCMFrame{TcpPacket: TcpPacket{SequenceNumber: 1, Timestamp: 1024}, encodedData: fixturePayload(t, 1)})
+	waitEmpty(t, s)
+	// Removing the HomePod must preserve the replacement anchor as well.
+	clock.OffsetForTimeline(phone, -126990*time.Second)
+	s.enqueue(&PCMFrame{TcpPacket: TcpPacket{SequenceNumber: 2, Timestamp: 2048}, encodedData: fixturePayload(t, 2)})
+	c.Close()
+	select {
+	case <-s.Done():
+	case <-time.After(3 * time.Second):
+		t.Fatal("reverse GM transition stranded the replacement anchor")
+	}
+	if b, err := os.ReadFile(dest); err != nil || len(b) != 3*4096 {
+		t.Fatalf("output=%d err=%v", len(b), err)
+	}
+}
