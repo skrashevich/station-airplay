@@ -33,6 +33,11 @@ func (s *tracker) accept(e event, now time.Time) (string, string) {
 		s.armed, s.handled, s.phrase, s.requestID = true, false, "", ""
 		s.sawFinalMetadata = false
 	}
+	// Do not combine a delayed final from another request with the current
+	// request's partial phrase. A new LISTENING cycle above owns any ID change.
+	if e.requestID != "" && s.requestID != "" && e.requestID != s.requestID {
+		return "", ""
+	}
 	// AliceState notifications can be sparse updates. Treat an absent state as
 	// unchanged, rather than mistaking it for a transition to proto's default IDLE.
 	if e.statePresent {

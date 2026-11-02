@@ -249,3 +249,20 @@ func TestDisconnectedSenderDoesNotCancel(t *testing.T) {
 		t.Fatal("queued media with no sender")
 	}
 }
+
+func TestFinalFromAnotherRequestCannotControlCurrentSender(t *testing.T) {
+	now := time.Now()
+	s := tracker{state: -1}
+	_, _ = s.accept(event{statePresent: true, state: 1, requestID: "current", phrase: "пауза", finalPresent: true}, now)
+	// Delayed notifications from an older request must not finalize the current
+	// partial phrase or overwrite its state/metadata.
+	if _, action := s.accept(event{statePresent: true, state: 3, requestID: "older", finalPresent: true, final: true}, now); action != "" {
+		t.Fatalf("unrelated final executed the current partial phrase: %q", action)
+	}
+	if s.state != 1 || s.requestID != "current" {
+		t.Fatalf("unrelated request overwrote current cycle: %+v", s)
+	}
+	if _, action := s.accept(event{requestID: "current", phrase: "какая погода", finalPresent: true, final: true}, now); action != "" {
+		t.Fatalf("unrelated final affected non-media current request: %q", action)
+	}
+}
