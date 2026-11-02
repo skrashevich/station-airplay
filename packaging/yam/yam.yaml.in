@@ -8,6 +8,9 @@ description: >-
   включая Станцию Макс, не поддерживаются.
 homepage: https://github.com/skrashevich/station-airplay
 targets: [@PLATFORM@]
+conflicts:
+  - airplay/airplay-luna
+  - alice/airplay
 files:
   bin/station-airplay: launcher.sh
   bin/station-airplay-service: service.sh
