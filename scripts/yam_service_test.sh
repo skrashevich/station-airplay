@@ -91,7 +91,7 @@ wait_event 5
 sh -n "$hook"
 [ -x "$hook" ]
 # The receiver must inherit no YAM_ROOT/YAM_VAR from the postinstall environment.
-sed -n '5p' "$root/events" | rg -q 'YAM_ROOT=unset:YAM_VAR=unset'
+sed -n '5p' "$root/events" | grep -q 'YAM_ROOT=unset:YAM_VAR=unset'
 "$service" disable
 assert_stopped
 "$hook" start
@@ -130,7 +130,7 @@ while "$service" status >/dev/null 2>&1; do
     n=$((n + 1)); [ "$n" -lt 15 ] || exit 1; sleep 1
 done
 wait_event 14
-rg -q '^native$' "$fixture/detach.log"
+grep -q '^native$' "$fixture/detach.log"
 # A persistent stale owner from another boot may now name an unrelated live PID.
 # start must recover, and the unrelated shell running this test must survive.
 cp "$fixture/receiver-fixture" "$root/bin/station-airplay"
@@ -192,7 +192,7 @@ BUSYBOX
 chmod 755 "$fixture/busy-bin/busybox"
 PATH=$fixture/busy-bin "$service" start
 wait_event 21
-rg -q '^busybox$' "$fixture/detach.log"
+grep -q '^busybox$' "$fixture/detach.log"
 PATH=$fixture/busy-bin "$service" stop
 wait_event 22
 assert_stopped
@@ -213,5 +213,5 @@ cmp "$hook" "$fixture/foreign-hook"
 # Refuse to overwrite an init script with an unrelated marker too.
 printf '#!/bin/sh\n# someone else\n' > "$hook"
 if YAM_ROOT=$root "$payload/bin/station-airplay-postinstall" --test-root "$fixture"; then exit 1; fi
-rg -q 'someone else' "$hook"
+grep -q 'someone else' "$hook"
 echo 'YAM service fixtures passed'
