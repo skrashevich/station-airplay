@@ -29,12 +29,13 @@ def build(version, yam_source, selected, output=None):
             (stage / "yam.yaml").write_text(template.replace("@VERSION@", version).replace("@PLATFORM@", platform))
             shutil.copy2(binary, stage / "station-airplay")
             (stage / "station-airplay").chmod(0o755)
-            shutil.copy2(ROOT / "packaging/yam/launcher.sh", stage / "launcher.sh")
-            (stage / "launcher.sh").chmod(0o755)
+            for name in ("launcher.sh", "service.sh", "postinstall.sh"):
+                shutil.copy2(ROOT / "packaging/yam" / name, stage / name)
+                (stage / name).chmod(0o755)
             for name in ("README.md", "LICENSE", "NOTICE", "AUTHORS"):
                 shutil.copy2(ROOT / name, stage / name)
             (stage / "docs").mkdir()
-            for name in ("yam.md", "releases.md", "SOURCE.md", "validation.md", "embedding.md"):
+            for name in ("yam.md", "releases.md", "SOURCE.md", "validation.md", "kuyase-validation.md", "kuyase-validation.json", "embedding.md"):
                 shutil.copy2(ROOT / "docs" / name, stage / "docs" / name)
             shutil.copytree(ROOT / "docs/licenses", stage / "docs/licenses")
             subprocess.run([str(publisher), "pack", "--source", str(stage),

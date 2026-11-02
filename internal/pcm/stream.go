@@ -98,6 +98,8 @@ func wait(ctx context.Context, d device) error {
 func drain(ctx context.Context, d device) error {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
+	ticker := time.NewTicker(5 * time.Millisecond)
+	defer ticker.Stop()
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -109,8 +111,12 @@ func drain(ctx context.Context, d device) error {
 		if code != -int(syscall.EAGAIN) && code != -int(syscall.EINTR) {
 			return fmt.Errorf("drain PCM: %w", d.err(code))
 		}
-		if err := wait(ctx, d); err != nil {
-			return err
+		// Writable space can remain ready throughout drain. Poll completion at a
+		// bounded rate instead of spinning or recovering/restarting the stream.
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
 		}
 	}
 }

@@ -19,6 +19,7 @@ jobs:
         run: |
           go test -race ./...
           sh scripts/yam_test.sh
+          sh scripts/yam_service_test.sh
       - name: Build standalone binaries and corresponding source
         env:
           VERSION: ${{ inputs.version }}

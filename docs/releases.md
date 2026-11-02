@@ -13,6 +13,7 @@ workflow проверяет совпадение с `VERSION`. Первый ре
 
 ```sh
 sh scripts/yam_test.sh
+sh scripts/yam_service_test.sh
 go test -race ./...
 sh scripts/build.sh "$(cat VERSION)"
 git clone https://github.com/nyakokitsu/yam.git .yam-tools

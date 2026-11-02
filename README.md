@@ -99,6 +99,8 @@ pause/resume/stop/next/previous по его зашифрованному кан�
 ### Через YAM v2
 
 Пакет опубликован в реестре YAM как `skrashevich/station-airplay`.
+Перед установкой остановите отдельную службу Station AirPlay или встроенный AirPlay
+в Quasar Bridge, если он включён: приёмники используют одни порты.
 На колонке с установленным YAM добавьте официальный реестр, если он ещё не настроен:
 
 ```sh
@@ -106,14 +108,37 @@ yam registry add official https://repo.yse.wtf/v2 \
   --key ed25519:5Rz8F47uftWVU5kLgWYhprkEZ4rpP2kecUge/a7KQas=
 yam install skrashevich/station-airplay
 station-airplay -check
-station-airplay -name 'Моя Станция AirPlay'
+station-airplay-service status
 ```
 
 YAM проверяет подпись индекса, SHA-256 и совместимость профиля. Готовые `.yampkg`
 также находятся в [GitHub Releases](https://github.com/skrashevich/station-airplay/releases).
-YAM хранит
-пакет и декларацию службы; запуск и автозапуск настраиваются отдельно.
-Профили других колонок, обновление, состояние сопряжения и удаление:
+
+Установка пакета на колонке сразу запускает приёмник и включает запуск после
+перезагрузки через отдельный `/etc/init.d/S99station-airplay-yam`. Если корень
+доступен только для чтения, postinstall временно перемонтирует его в запись и
+возвращает прежний режим. Конфигурация и службы аудио прошивки не меняются.
+Установка пакета на ПК через `yam --root` пропускает активацию.
+
+```sh
+station-airplay-service stop
+station-airplay-service start
+station-airplay-service restart
+station-airplay-service disable  # остановить и отключить автозапуск
+station-airplay-service enable   # включить автозапуск и запустить
+```
+
+Команды находятся в `$YAM_ROOT/bin`, обычно `/data/yam/bin`. Логи —
+`$YAM_ROOT/var/skrashevich.station-airplay/receiver.log` и `service.log`.
+Идентичность сопряжения сохраняется при обновлении; launcher также продолжает
+использовать существующую идентичность старых YAM-установок в родительском
+каталоге `var` (обычно `/data/var/skrashevich.station-airplay`), если в новом
+каталоге её ещё нет. Отключение автозапуска сохраняется при обновлении.
+
+Для удаления выполните `station-airplay-service disable`, затем
+`yam remove skrashevich/station-airplay`. Состояние сопряжения сохраняется;
+оставшийся init-скрипт пропускает запуск без команды пакета. Профили других
+колонок, ручной запуск с аргументами, пути состояния и очистка init-скрипта:
 [инструкция YAM](docs/yam.md). [Сборка и выпуск релизов](docs/releases.md).
 
 ### Автономный архив
@@ -191,6 +216,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags '-s -w' 
 CGO_ENABLED=0 go run ./cmd/station-pcm-package -arch arm64 -binary station-airplay-arm64
 CGO_ENABLED=0 go run ./cmd/station-pcm-package -arch armv7 -binary station-airplay-armv7
 sh scripts/install_test.sh
+sh scripts/yam_service_test.sh
 ```
 
 `go test -race` использует инструментирование гонок на хост-машине; распространяемые бинарные файлы
@@ -228,7 +254,11 @@ go run github.com/skrashevich/station-airplay/cmd/station-pcm-package \
 
 ## Устранение неполадок
 
-Журнал находится в файле `receiver.log` в префиксе установки. `-check` проверяет предварительные
+Для автономного архива журнал находится в файле `receiver.log` в префиксе установки;
+для YAM — в `$YAM_ROOT/var/skrashevich.station-airplay/receiver.log`
+(обычно `/data/yam/var/skrashevich.station-airplay/receiver.log`). Состояние службы
+YAM проверяется командой `station-airplay-service status`, журнал супервизора —
+в соседнем `service.log`. `-check` проверяет предварительные
 требования к исполняемому файлу и интерфейсу, а также символы библиотеки собственного проигрывателя,
 не открывая аудио. Если обнаружение работает, а воспроизведение
 нет, изучите ошибки кодека/настройки, диагностику ожидания времени PTP и проверьте, запущен ли

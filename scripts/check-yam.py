@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise real YAM install/reinstall/doctor/remove on every built platform package."""
 import argparse
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -9,12 +10,66 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 
+
+def check_launcher(yam_source):
+    """Run the real launcher from YAM's actual install layout with a host fixture."""
+    with tempfile.TemporaryDirectory(prefix="station-airplay-launcher-check-") as tmp:
+        work = Path(tmp).resolve()
+        source = work / "source"
+        source.mkdir()
+        fixture = source / "receiver"
+        fixture.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
+        fixture.chmod(0o755)
+        (source / "yam.yaml").write_text(json.dumps({
+            "name": "skrashevich/station-airplay", "version": "99.0.0",
+            "license": "Apache-2.0", "description": "Launcher integration fixture",
+            "targets": ["cucumber"], "files": {
+                "bin/station-airplay": str(ROOT / "packaging/yam/launcher.sh"),
+                "share/skrashevich.station-airplay/bin/station-airplay": str(fixture),
+            },
+        }))
+        artifact = work / "fixture.yampkg"
+        profiles = yam_source / "platforms"
+        subprocess.run([str(yam_source / "target/release/yam-publish"), "pack",
+                        "--source", str(source), "--profiles", str(profiles),
+                        "--platform", "cucumber", "--output", str(artifact)], check=True)
+        root = work / "yam root"
+        command = [str(yam_source / "target/release/yam"), "--profiles", str(profiles),
+                   "--platform", "cucumber", "--root", str(root)]
+        subprocess.run([*command, "install", "--yes", str(artifact)], check=True, capture_output=True)
+        environment = {key: value for key, value in os.environ.items() if key not in ("YAM_ROOT", "YAM_VAR")}
+        result = subprocess.run([str(root / "bin/station-airplay"), "-name", "A name with spaces"],
+                                env=environment, check=True, capture_output=True, text=True)
+        expected = ["-data-dir", str(root / "var/skrashevich.station-airplay"), "-name", "A name with spaces"]
+        if result.stdout.splitlines() != expected:
+            raise RuntimeError(f"Installed launcher arguments: {result.stdout.splitlines()!r}; expected {expected!r}")
+        assert (root / "var/skrashevich.station-airplay").stat().st_mode & 0o777 == 0o700
+        legacy = work / "var/skrashevich.station-airplay"
+        legacy.mkdir(parents=True)
+        identity = legacy / "identity.json"
+        identity.write_text("retained pairing identity")
+        result = subprocess.run([str(root / "bin/station-airplay"), "-check"],
+                                env=environment, check=True, capture_output=True, text=True)
+        assert result.stdout.splitlines() == ["-data-dir", str(legacy), "-check"]
+        assert identity.read_text() == "retained pairing identity"
+        custom = work / "custom var"
+        result = subprocess.run([str(root / "bin/station-airplay"), "-check"],
+                                env=dict(environment, YAM_VAR=str(custom)), check=True,
+                                capture_output=True, text=True)
+        assert result.stdout.splitlines() == ["-data-dir", str(custom / "skrashevich.station-airplay"), "-check"]
+        print("YAM installed launcher state path and arguments passed")
+
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--yam-source", type=Path, required=True)
 parser.add_argument("--version", required=True)
+parser.add_argument("--launcher-only", action="store_true", help="only check the host-executable launcher fixture")
 args = parser.parse_args()
 yam_source = args.yam_source.resolve()
 yam = yam_source / "target/release/yam"
+check_launcher(yam_source)
+if args.launcher_only:
+    sys.exit(0)
 artifacts = sorted((ROOT / "dist").glob(f"station-airplay-{args.version}-*.yampkg"))
 if not artifacts:
     raise SystemExit("no YAM packages to check")

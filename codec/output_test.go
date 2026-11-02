@@ -28,6 +28,15 @@ func TestOutputHelper(t *testing.T) {
 		signal.Notify(ch, syscall.SIGTERM)
 		os.WriteFile(path+".ready", []byte("ready"), 0600)
 		<-ch
+		if os.Getenv("STATION_OUTPUT_CHECK_EOF") == "1" {
+			eof := make(chan struct{})
+			go func() { io.Copy(io.Discard, os.Stdin); close(eof) }()
+			select {
+			case <-eof:
+				os.Exit(3)
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
 		os.WriteFile(path, []byte("clean"), 0600)
 		os.Exit(0)
 	}
@@ -44,6 +53,7 @@ func TestOutputHelper(t *testing.T) {
 
 func TestOutputCloseAllowsChildToReleaseMixer(t *testing.T) {
 	t.Setenv("STATION_OUTPUT_HELPER", "1")
+	t.Setenv("STATION_OUTPUT_CHECK_EOF", "1")
 	dest := filepath.Join(t.TempDir(), "cleanup")
 	t.Setenv("STATION_OUTPUT_TERM", dest)
 	exe, _ := os.Executable()

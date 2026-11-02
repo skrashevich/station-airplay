@@ -1,0 +1,603 @@
+{
+  "version": "0.1.2",
+  "artifact_origin": "local release candidate",
+  "date": "2026-11-02",
+  "kuyase_commit": "05701cbcf1259c95d2b43961537e9509582237f7",
+  "yam_version": "0.2.5",
+  "audio_passed": 36,
+  "audio_total": 36,
+  "autostart_install_passed": 5,
+  "autostart_reboot_passed": 5,
+  "boards": [
+    {
+      "board": "yandexmini2",
+      "profile": "yandexmini_2",
+      "package_sha256": "8a83e16bbc3891e6160b83603dff4aa4b180264582950f9b225232af338c7cb6",
+      "root_image_sha256": "035ad6c652193fb76a248e7e90bbf074dd4d29b15c72a8a377dbc7bbe0feb39b",
+      "library": "/usr/lib/libasound.so.2.0.0",
+      "library_sha256": "10707e569b86844accfc40737e9fd4a8b8e288bae7c6ed4327beee4ea1191cab",
+      "boot_before": "e6361b11-425c-4132-a5e7-5c91b2c9d296",
+      "boot_after": "08b8f7e4-5ab2-4862-b790-0723ec3f0a4c",
+      "install_autostart": true,
+      "reboot_autostart": true,
+      "root_readonly_after_install": true,
+      "pairing_retained": true,
+      "remove_stops": true,
+      "remove_retains_identity": true,
+      "library_unchanged": true,
+      "root_image_unchanged": true,
+      "completed": true,
+      "audio": [
+        {
+          "phase": "install",
+          "rate": 44100,
+          "result": "PASS",
+          "bytes": 648960,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/alsa-lib/libasound_module_rate_speexrate.so",
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "install",
+          "rate": 48000,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 44100,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/alsa-lib/libasound_module_rate_speexrate.so",
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 48000,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 44100,
+          "result": "PASS",
+          "bytes": 652800,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/alsa-lib/libasound_module_rate_speexrate.so",
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 48000,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 44100,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/alsa-lib/libasound_module_rate_speexrate.so",
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 48000,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 44100,
+          "result": "PASS",
+          "bytes": 655680,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/alsa-lib/libasound_module_rate_speexrate.so",
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 48000,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 44100,
+          "result": "PASS",
+          "bytes": 655680,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/alsa-lib/libasound_module_rate_speexrate.so",
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 48000,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        }
+      ]
+    },
+    {
+      "board": "yandexmini2nc",
+      "profile": "yandexmini_2",
+      "package_sha256": "8a83e16bbc3891e6160b83603dff4aa4b180264582950f9b225232af338c7cb6",
+      "root_image_sha256": "c82613e362cfd7b664379db8b3ba1b17325a6aff07554a471f42dfd32deca5ff",
+      "library": "/usr/lib/libasound.so.2.0.0",
+      "library_sha256": "10707e569b86844accfc40737e9fd4a8b8e288bae7c6ed4327beee4ea1191cab",
+      "boot_before": "85754b69-8d2f-447f-a9f2-e43d0f0a2feb",
+      "boot_after": "60fd3d21-ab5d-45e5-a654-a3eef503e4fa",
+      "install_autostart": true,
+      "reboot_autostart": true,
+      "root_readonly_after_install": true,
+      "pairing_retained": true,
+      "remove_stops": true,
+      "remove_retains_identity": true,
+      "library_unchanged": true,
+      "root_image_unchanged": true,
+      "disabled_survives_reboot": true,
+      "enable_starts": true,
+      "completed": true,
+      "audio": [
+        {
+          "phase": "install",
+          "rate": 44100,
+          "result": "PASS",
+          "bytes": 652800,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/alsa-lib/libasound_module_rate_speexrate.so",
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "install",
+          "rate": 48000,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 44100,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/alsa-lib/libasound_module_rate_speexrate.so",
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 48000,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 44100,
+          "result": "PASS",
+          "bytes": 652800,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/alsa-lib/libasound_module_rate_speexrate.so",
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 48000,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 44100,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/alsa-lib/libasound_module_rate_speexrate.so",
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 48000,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 44100,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/alsa-lib/libasound_module_rate_speexrate.so",
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 48000,
+          "result": "PASS",
+          "bytes": 648000,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 44100,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/alsa-lib/libasound_module_rate_speexrate.so",
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 48000,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        }
+      ]
+    },
+    {
+      "board": "cucumber",
+      "profile": "cucumber",
+      "package_sha256": "dffbdaae04d31d660f4aa6729770f9fcc2d31ce415270fb4e3f8c4d6e3d6a385",
+      "root_image_sha256": "5ebc1e66bc24fe88447b927083f202cfaee0aee9b24bf8e69163c7d7cef99098",
+      "library": "/usr/lib/libasound.so.2.0.0",
+      "library_sha256": "9d635c9d64d01c235aeadad482ca2fd687c4619f1b3dbe0f09d6dca612730f59",
+      "boot_before": "5dff4b00-e8a4-47cc-9553-ac9bea62c53a",
+      "boot_after": "87b70a7c-a8cf-4852-b874-ca9d2c87068e",
+      "install_autostart": true,
+      "reboot_autostart": true,
+      "root_readonly_after_install": true,
+      "pairing_retained": true,
+      "remove_stops": true,
+      "remove_retains_identity": true,
+      "library_unchanged": true,
+      "root_image_unchanged": true,
+      "completed": true,
+      "audio": [
+        {
+          "phase": "install",
+          "rate": 44100,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/alsa-lib/libasound_module_rate_speexrate.so",
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "install",
+          "rate": 48000,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 44100,
+          "result": "PASS",
+          "bytes": 655680,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/alsa-lib/libasound_module_rate_speexrate.so",
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 48000,
+          "result": "PASS",
+          "bytes": 652800,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        }
+      ]
+    },
+    {
+      "board": "station2",
+      "profile": "yandexmidi",
+      "package_sha256": "1fb840e7fe2f2b120af24c6e32ef49fc848ac8a5075a56293d197b8761e549f4",
+      "root_image_sha256": "5e93ee68192c3831959bcec67f64eabc103738f0bf2777575eb285042931be86",
+      "library": "/usr/lib/libasound.so.2.0.0",
+      "library_sha256": "64a0e0d3ada172f8dd67863305525a1f342b8bc36f39b7a2b3552d9bee93be7f",
+      "boot_before": "56658ee5-a365-40f4-8cab-b65542cd904f",
+      "boot_after": "865cb616-cd1e-4667-8768-bf739af9e551",
+      "install_autostart": true,
+      "reboot_autostart": true,
+      "root_readonly_after_install": true,
+      "pairing_retained": true,
+      "remove_stops": true,
+      "remove_retains_identity": true,
+      "library_unchanged": true,
+      "root_image_unchanged": true,
+      "completed": true,
+      "audio": [
+        {
+          "phase": "install",
+          "rate": 44100,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/alsa-lib/libasound_module_rate_speexrate.so",
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "install",
+          "rate": 48000,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 44100,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/alsa-lib/libasound_module_rate_speexrate.so",
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 48000,
+          "result": "PASS",
+          "bytes": 655680,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/usr/lib/libasound.so.2.0.0"
+          ]
+        }
+      ]
+    },
+    {
+      "board": "yandexmini",
+      "profile": "yandexmini",
+      "package_sha256": "ebf9acd33dac65da6cccbf0d5835e6797090193b8f01cab185de53108bdf1179",
+      "root_image_sha256": "4cdb437ad965f50462da9130962f55f5a6b895b047dd757ea3a188d179c43ecd",
+      "library": "/system/vendor/quasar/libs/libasound.so.2.0.0",
+      "library_sha256": "df8f67691cf9a59a803f4e264ad86cd77fcb9e00da1ff4a8c1e33d2e83359f1a",
+      "boot_before": "334b7eda-361f-435e-9ec2-f3388be07fbe",
+      "boot_after": "b490aeb6-5578-4527-b134-623ec7db36fd",
+      "install_autostart": true,
+      "reboot_autostart": true,
+      "root_readonly_after_install": true,
+      "pairing_retained": true,
+      "remove_stops": true,
+      "remove_retains_identity": true,
+      "library_unchanged": true,
+      "root_image_unchanged": true,
+      "completed": true,
+      "audio": [
+        {
+          "phase": "install",
+          "rate": 44100,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/system/vendor/quasar/libs/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "install",
+          "rate": 48000,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/system/vendor/quasar/libs/libasound.so.2.0.0"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 44100,
+          "result": "PASS",
+          "bytes": 659520,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/bkupgrade/data/opt/lib/libasound.so.2"
+          ]
+        },
+        {
+          "phase": "reboot",
+          "rate": 48000,
+          "result": "PASS",
+          "bytes": 651840,
+          "protocol_passed": true,
+          "tone_test_passed": true,
+          "ipc_error_count": 0,
+          "library_paths": [
+            "/bkupgrade/data/opt/lib/libasound.so.2"
+          ]
+        }
+      ]
+    }
+  ],
+  "source_sha256": {
+    "codec/output.go": "17a2e864f29d0de845d89020ff5559f2d6409fe0c9c5702120b75b1f64479fbf",
+    "internal/pcm/alsa_linux.go": "d342087331044d889d71f6a9e2ad8b6e22c2700040abf3ad917a535d6acc7317",
+    "internal/pcm/stream.go": "a311cbdc472bede17abf10b00112d28c3a886abb26a73000a23cac16d082cfe7",
+    "packaging/yam/launcher.sh": "61b98e5a3c9ba6a3e28f1d02174c5f44890acb53e156aedb381745c76b626bbd",
+    "packaging/yam/service.sh": "c35b9aae0e8dc46c5b6fd6c7b8209c4a1221f94deef34236bdd449fec71f26d1",
+    "packaging/yam/postinstall.sh": "3a09f37b2172ab1dfaf07aa80cba708e47fd26cd0e68e18c72b09bbf1523c3d8",
+    "packaging/yam/yam.yaml.in": "8db891b7b9136e17eac4aa91ea22bd70f7ec6de46c478f4cc8b1c7d3aaf7ea66"
+  },
+  "forced_drain_cancellation": {
+    "boot": "cf8a8697-1ec3-43ca-99da-1406aea05ce5",
+    "tests": [
+      {
+        "rate": 44100,
+        "passed": true,
+        "trace": "CANCEL DRAINING 5\npcmtrace counter before-cancel 1\npcmtrace counter before-drop 1\npcmtrace counter after-drop 0\nAFTER DROP STATE 1"
+      },
+      {
+        "rate": 48000,
+        "passed": true,
+        "trace": "CANCEL DRAINING 5\npcmtrace counter before-cancel 1\npcmtrace counter before-drop 1\npcmtrace counter after-drop 0\nAFTER DROP STATE 1"
+      },
+      {
+        "rate": 44100,
+        "passed": true,
+        "trace": "CANCEL DRAINING 5\npcmtrace counter before-cancel 1\npcmtrace counter before-drop 1\npcmtrace counter after-drop 0\nAFTER DROP STATE 1"
+      },
+      {
+        "rate": 48000,
+        "passed": true,
+        "trace": "CANCEL DRAINING 5\npcmtrace counter before-cancel 1\npcmtrace counter before-drop 1\npcmtrace counter after-drop 0\nAFTER DROP STATE 1"
+      }
+    ],
+    "completed": true
+  }
+}

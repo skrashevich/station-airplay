@@ -19,7 +19,7 @@ for target in arm64 armv7;do
  mkdir -p "$stage/scripts" "$stage/docs/licenses"
  cp scripts/install.sh scripts/service.sh "$stage/scripts/"
  cp README.md NOTICE LICENSE AUTHORS "$stage/"
- cp docs/validation.md docs/embedding.md docs/SOURCE.md docs/yam.md docs/releases.md "$stage/docs/"
+ cp docs/validation.md docs/kuyase-validation.md docs/kuyase-validation.json docs/embedding.md docs/SOURCE.md docs/yam.md docs/releases.md "$stage/docs/"
  cp docs/licenses/* "$stage/docs/licenses/"
  python3 - "$stage" "dist/station-airplay-$version-linux-$target.tar.gz" <<'PYARCHIVE'
 import importlib.util

@@ -5,7 +5,7 @@ work=$(mktemp -d)
 work=$(CDPATH= cd "$work" && pwd -P)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 root="$work/yam root"
-payload="$root/pkgs/skrashevich/station-airplay/0.1.0/files"
+payload="$root/pkgs/skrashevich/station-airplay/0.1.0"
 mkdir -p "$root/bin" "$payload/bin" "$payload/share/skrashevich.station-airplay/bin"
 cp "$here/packaging/yam/launcher.sh" "$payload/bin/station-airplay"
 chmod 755 "$payload/bin/station-airplay"

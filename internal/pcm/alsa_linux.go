@@ -10,6 +10,7 @@ import (
 	"os"
 	"runtime"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -27,13 +28,16 @@ type alsa struct {
 	waitPCM    func(uintptr, int32) int32
 	recoverPCM func(uintptr, int32, int32) int32
 	drainPCM   func(uintptr) int32
+	statePCM   func(uintptr) int32
+	availPCM   func(uintptr) int
+	resetPCM   func(uintptr) int32
 	dropPCM    func(uintptr) int32
 	closePCM   func(uintptr) int32
 	strerror   func(int32) string
 }
 
-// load uses dlsym, whose lookup selects the default symbol version. This avoids
-// the legacy ALSA compatibility symbols selected by some unversioned aplay ELFs.
+// load resolves the public ALSA entry points from the firmware library.
+// The isolated helper keeps that dynamic library out of the static receiver.
 func load() (*alsa, error) {
 	paths := []string{os.Getenv("STATION_PCM_LIBRARY")}
 	if paths[0] == "" {
@@ -54,6 +58,8 @@ func load() (*alsa, error) {
 			{"snd_pcm_open", &a.open}, {"snd_pcm_set_params", &a.setParams},
 			{"snd_pcm_writei", &a.writei}, {"snd_pcm_wait", &a.waitPCM},
 			{"snd_pcm_recover", &a.recoverPCM}, {"snd_pcm_drain", &a.drainPCM},
+			{"snd_pcm_state", &a.statePCM}, {"snd_pcm_avail_update", &a.availPCM},
+			{"snd_pcm_reset", &a.resetPCM},
 			{"snd_pcm_drop", &a.dropPCM}, {"snd_pcm_close", &a.closePCM},
 			{"snd_strerror", &a.strerror},
 		}
@@ -112,8 +118,9 @@ func Play(ctx context.Context, input io.Reader, cfg Config) error {
 }
 
 type alsaDevice struct {
-	api    *alsa
-	handle uintptr
+	api      *alsa
+	handle   uintptr
+	draining bool
 }
 
 func (d *alsaDevice) write(p []byte) int {
@@ -130,8 +137,65 @@ func (d *alsaDevice) recover(code int) int {
 	}
 	return int(d.api.recoverPCM(d.handle, int32(code), 1))
 }
-func (d *alsaDevice) drain() int { return int(d.api.drainPCM(d.handle)) }
-func (d *alsaDevice) drop()      { d.api.dropPCM(d.handle) }
+func (d *alsaDevice) drain() int {
+	if !d.draining {
+		code := int(d.api.drainPCM(d.handle))
+		if code != -int(syscall.EAGAIN) {
+			if code != -int(syscall.EINTR) {
+				return code
+			}
+			// An interrupted call may already have initiated drain. Do not
+			// resubmit its tail or lose pending-drain cleanup on cancellation.
+			switch d.api.statePCM(d.handle) {
+			case 1:
+				return 0
+			case 5:
+			default:
+				return code
+			}
+		}
+		d.draining = true
+	}
+	// Old rate plugins submit their fractional tail again on every drain call.
+	// Initiate once, then advance dmix pointers before inspecting its cached state.
+	available := d.api.availPCM(d.handle)
+	switch d.api.statePCM(d.handle) {
+	case 1: // SETUP: playback drained, including the vendor mixer bookkeeping.
+		return 0
+	case 2, 3, 5: // PREPARED, RUNNING, DRAINING
+		if available < 0 {
+			return available
+		}
+		return -int(syscall.EAGAIN)
+	case 4:
+		return -int(syscall.EPIPE)
+	case 7:
+		return -int(syscall.ESTRPIPE)
+	case 8:
+		return -int(syscall.ENODEV)
+	default:
+		return -int(syscall.EBADFD)
+	}
+}
+func (d *alsaDevice) drop() {
+	if d.draining && d.api.statePCM(d.handle) == 5 {
+		// Some vendor dmix versions decrement their active count on completed
+		// drain but not on a DRAINING -> drop transition. Reset this client's
+		// pending frames, then synchronize completion before dropping it.
+		if d.api.resetPCM(d.handle) >= 0 {
+			deadline := time.Now().Add(500 * time.Millisecond)
+			for {
+				d.api.availPCM(d.handle)
+				if d.api.statePCM(d.handle) != 5 || !time.Now().Before(deadline) {
+					break
+				}
+				// dmix may need the next hardware period to observe zero delay.
+				time.Sleep(5 * time.Millisecond)
+			}
+		}
+	}
+	d.api.dropPCM(d.handle)
+}
 func (d *alsaDevice) err(code int) error {
 	return fmt.Errorf("%s: %w", d.api.strerror(int32(code)), syscall.Errno(-code))
 }

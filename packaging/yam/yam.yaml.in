@@ -10,12 +10,15 @@ homepage: https://github.com/skrashevich/station-airplay
 targets: [@PLATFORM@]
 files:
   bin/station-airplay: launcher.sh
+  bin/station-airplay-service: service.sh
+  bin/station-airplay-postinstall: postinstall.sh
   share/skrashevich.station-airplay/bin/station-airplay: station-airplay
   share/skrashevich.station-airplay/README.md: README.md
   share/skrashevich.station-airplay/LICENSE: LICENSE
   share/skrashevich.station-airplay/NOTICE: NOTICE
   share/skrashevich.station-airplay/AUTHORS: AUTHORS
   share/skrashevich.station-airplay/docs/: docs/
+postinstall: [bin/station-airplay-postinstall]
 services:
   receiver:
     exec: [bin/station-airplay]

@@ -1,8 +1,8 @@
 #!/bin/sh
 # Run on the station with an existing YAM v2 installation.
 set -eu
-platform=${1:?Usage: sh install-yam.sh PLATFORM [TAG, default v0.1.1]}
-tag=${2:-v0.1.1}
+platform=${1:?Usage: sh install-yam.sh PLATFORM [TAG, default v0.1.2]}
+tag=${2:-v0.1.2}
 case "$platform" in ''|*[!a-z0-9_]*) echo 'Invalid YAM platform' >&2; exit 2 ;; esac
 case "$tag" in v*) version=${tag#v} ;; *) echo 'Tag must start with v' >&2; exit 2 ;; esac
 case "$version" in ''|*[!0-9.]*|.*|*.) echo 'Invalid release tag' >&2; exit 2 ;; esac
@@ -23,4 +23,4 @@ awk -v file="$artifact" '$2 == file {print; found=1} END {if (!found) exit 1}' \
     "$work/SHA256SUMS" > "$work/selected.sha256"
 (cd "$work" && sha256sum -c selected.sha256)
 yam install --yes "$work/$artifact"
-echo 'Installed. Run station-airplay -check, then station-airplay to start the receiver.'
+echo 'Installed. Run station-airplay -check and station-airplay-service status.'

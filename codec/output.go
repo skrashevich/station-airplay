@@ -101,7 +101,10 @@ func (o *Output) Drain(ctx context.Context) error {
 	}
 }
 func (o *Output) Close() error {
-	o.once.Do(func() { o.cancel(); o.input.Close() })
+	// Signal Stop before exposing EOF: EOF asks ALSA to drain, while Stop must
+	// drop the buffer. The child closes its read end on exit, unblocking writers.
+	o.once.Do(o.cancel)
 	<-o.done
+	o.input.Close()
 	return nil
 }
