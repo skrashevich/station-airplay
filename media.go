@@ -7,6 +7,25 @@ import (
 	"math"
 )
 
+// A phone may tear down only its audio stream after a remote pause. Keep
+// control of that explicitly paused sender while its event channel is alive.
+type pausedRemote struct {
+	owner     *audio.Server
+	send      func(context.Context, string) error
+	available func() bool
+}
+
+func (s *protocolService) pausedSender(owner *audio.Server) *pausedRemote {
+	s.pausedMu.Lock()
+	defer s.pausedMu.Unlock()
+	p := s.pausedRemote
+	if p != nil && ((owner != nil && owner != p.owner) || !p.available()) {
+		s.pausedRemote = nil
+		return nil
+	}
+	return p
+}
+
 // Control sends a media command to the current sender, without disabling the
 // receiver. Source commands require a working encrypted event channel.
 func (r *Receiver) Control(ctx context.Context, action string) error {
@@ -62,7 +81,11 @@ func (s *protocolService) Control(ctx context.Context, action string) error {
 		return err
 	}
 	owner := s.player.Current()
+	paused := s.pausedSender(owner)
 	if owner == nil {
+		if action == "resume" && paused != nil {
+			return paused.send(ctx, action)
+		}
 		return ErrNoSender
 	}
 	switch action {
@@ -88,7 +111,13 @@ func (s *protocolService) Control(ctx context.Context, action string) error {
 		if owner.Context().Err() != nil {
 			return ErrNoSender
 		}
-		return owner.RemoteControl(local, action)
+		err := owner.RemoteControl(local, action)
+		if err == nil && action == "pause" && owner.RemoteAvailable != nil && owner.RemoteAvailable() {
+			s.pausedMu.Lock()
+			s.pausedRemote = &pausedRemote{owner: owner, send: owner.RemoteControl, available: owner.RemoteAvailable}
+			s.pausedMu.Unlock()
+		}
+		return err
 	default:
 		return ErrControlUnsupported
 	}

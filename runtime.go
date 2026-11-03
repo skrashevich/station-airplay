@@ -92,6 +92,8 @@ type protocolService struct {
 	accessory       *homekit.Accessory
 	player          *audio.Player
 	once            sync.Once
+	pausedMu        sync.Mutex
+	pausedRemote    *pausedRemote
 }
 
 func openService(ctx context.Context, cfg settings) (_ service, failure error) {
@@ -159,6 +161,8 @@ func openService(ctx context.Context, cfg settings) (_ service, failure error) {
 
 func (s *protocolService) Status() Status {
 	connected, playing := s.player.PlaybackState()
+	paused := s.pausedSender(s.player.Current())
+	connected = connected || paused != nil
 	return Status{Name: s.settings.name, Address: s.control.Addr().String(), Connected: connected, Playing: playing, VolumeDB: s.player.Volume()}
 }
 

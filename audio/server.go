@@ -16,6 +16,7 @@ import (
 type sequenceRange struct{ from, until uint32 }
 type Server struct {
 	RemoteControl                func(context.Context, string) error
+	RemoteAvailable              func() bool
 	NotifyVolume                 func(context.Context, float64) error
 	player                       *Player
 	ctx                          context.Context
