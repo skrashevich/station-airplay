@@ -60,6 +60,7 @@ func fields(data []byte) (map[int]field, error) {
 }
 
 type event struct {
+	nativeEnvelope      bool
 	state               int
 	statePresent        bool
 	phrase, requestID   string
@@ -71,15 +72,26 @@ func decodeEvent(data []byte) (event, bool, error) {
 	if err != nil {
 		return event{}, false, err
 	}
-	if outer[252].wire != 2 {
-		return event{}, false, nil
+	// Orion factory-13 sends native protobuf oneof fields (3 / 210),
+	// rather than the generic payload/type envelope (252 / 253).
+	native := false
+	payload, kind := outer[252], outer[253].n
+	if payload.wire != 2 {
+		switch {
+		case outer[3].wire == 2:
+			payload, kind, native = outer[3], 3, true
+		case outer[210].wire == 2:
+			payload, kind, native = outer[210], 210, true
+		default:
+			return event{}, false, nil
+		}
 	}
 	var state []byte
-	switch outer[253].n {
+	switch kind {
 	case 3:
-		state = outer[252].data
+		state = payload.data
 	case 210:
-		remote, err := fields(outer[252].data)
+		remote, err := fields(payload.data)
 		if err != nil {
 			return event{}, false, err
 		}
@@ -110,7 +122,7 @@ func decodeEvent(data []byte) (event, bool, error) {
 			return event{}, false, errWire
 		}
 	}
-	e := event{state: int(stateField.n), statePresent: statePresent, phrase: string(f[2].data), requestID: string(f[7].data)}
+	e := event{nativeEnvelope: native, state: int(stateField.n), statePresent: statePresent, phrase: string(f[2].data), requestID: string(f[7].data)}
 	if req, ok := f[15]; ok && req.wire == 2 {
 		r, err := fields(req.data)
 		if err != nil {
@@ -161,6 +173,14 @@ func cancelFrame(method int) []byte {
 	remote = bytesField(remote, 8, number(nil, 1, uint64(method)))
 	outer := bytesField(nil, 252, remote)
 	outer = number(outer, 253, 210)
+	frame := binary.LittleEndian.AppendUint32(nil, uint32(len(outer)))
+	return append(frame, outer...)
+}
+
+func nativeCancelFrame(method int) []byte {
+	remote := bytesField(nil, 7, []byte("AliceCapability"))
+	remote = bytesField(remote, 8, number(nil, 1, uint64(method)))
+	outer := bytesField(nil, 210, remote)
 	frame := binary.LittleEndian.AppendUint32(nil, uint32(len(outer)))
 	return append(frame, outer...)
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -160,8 +161,28 @@ func writeFixture(t *testing.T, conn net.Conn, raw string) {
 }
 
 func TestRunSelectiveCancelAndShutdown(t *testing.T) {
-	for _, method := range []int{1, 6} {
-		t.Run(string(rune('0'+method)), func(t *testing.T) {
+	for _, tc := range []struct {
+		method int
+		native bool
+	}{{1, false}, {6, false}, {1, true}, {6, true}} {
+		method := tc.method
+		t.Run(fmt.Sprintf("method=%d/native=%t", method, tc.native), func(t *testing.T) {
+			write := func(conn net.Conn, raw string) {
+				t.Helper()
+				if !tc.native {
+					writeFixture(t, conn, raw)
+					return
+				}
+				outer, err := fields(fromHex(t, raw))
+				if err != nil {
+					t.Fatal(err)
+				}
+				data := bytesField(nil, outer[253].n, outer[252].data)
+				frame := binary.LittleEndian.AppendUint32(nil, uint32(len(data)))
+				if _, err := conn.Write(append(frame, data...)); err != nil {
+					t.Fatal(err)
+				}
+			}
 			listener, err := net.Listen("tcp", "127.0.0.1:0")
 			if err != nil {
 				t.Fatal(err)
@@ -183,23 +204,27 @@ func TestRunSelectiveCancelAndShutdown(t *testing.T) {
 			}
 			defer conn.Close()
 			// Startup phrase and unrelated complete command must not cancel Alice.
-			writeFixture(t, conn, "e20f0e 0803 120ad0bfd0b0d183d0b7d0b0 e80f03")
-			writeFixture(t, conn, "e20f02 0801 e80f03")
-			writeFixture(t, conn, "e20f06 0803 12026869 e80f03")
+			write(conn, "e20f0e 0803 120ad0bfd0b0d183d0b7d0b0 e80f03")
+			write(conn, "e20f02 0801 e80f03")
+			write(conn, "e20f06 0803 12026869 e80f03")
 			if err := conn.SetReadDeadline(time.Now().Add(80 * time.Millisecond)); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := readFrame(conn); err == nil {
 				t.Fatal("unrelated request cancelled Alice")
 			}
-			writeFixture(t, conn, "e20f02 0801 e80f03")
-			writeFixture(t, conn, "e20f0e 0803 120ad0bfd0b0d183d0b7d0b0 e80f03")
-			writeFixture(t, conn, "e20f0e 0803 120ad0bfd0b0d183d0b7d0b0 e80f03")
+			write(conn, "e20f02 0801 e80f03")
+			write(conn, "e20f0e 0803 120ad0bfd0b0d183d0b7d0b0 e80f03")
+			write(conn, "e20f0e 0803 120ad0bfd0b0d183d0b7d0b0 e80f03")
 			if err := conn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
 				t.Fatal(err)
 			}
 			out, err := readFrame(conn)
-			if err != nil || !bytes.Equal(out, cancelFrame(method)[4:]) {
+			want := cancelFrame(method)
+			if tc.native {
+				want = nativeCancelFrame(method)
+			}
+			if err != nil || !bytes.Equal(out, want[4:]) {
 				t.Fatalf("cancel=%x err=%v", out, err)
 			}
 			select {
