@@ -11,17 +11,21 @@ import (
 // control of that explicitly paused sender while its event channel is alive.
 type pausedRemote struct {
 	owner     *audio.Server
+	claimID   uint64
 	send      func(context.Context, string) error
 	available func() bool
 }
 
-func (s *protocolService) pausedSender(owner *audio.Server) *pausedRemote {
+func (s *protocolService) pausedSender() *pausedRemote {
 	s.pausedMu.Lock()
 	defer s.pausedMu.Unlock()
 	p := s.pausedRemote
-	if p != nil && ((owner != nil && owner != p.owner) || !p.available()) {
-		s.pausedRemote = nil
-		return nil
+	if p != nil {
+		owner, claimID := s.player.Ownership()
+		if claimID != p.claimID || (owner != nil && owner != p.owner) || !p.available() {
+			s.pausedRemote = nil
+			return nil
+		}
 	}
 	return p
 }
@@ -80,13 +84,18 @@ func (s *protocolService) Control(ctx context.Context, action string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	owner := s.player.Current()
-	paused := s.pausedSender(owner)
+	owner, claimID := s.player.Ownership()
+	paused := s.pausedSender()
 	if owner == nil {
-		if action == "resume" && paused != nil {
-			return paused.send(ctx, action)
+		if paused == nil {
+			return ErrNoSender
 		}
-		return ErrNoSender
+		switch action {
+		case "pause", "resume", "stop", "next", "previous", "restart":
+			return paused.send(ctx, action)
+		default:
+			return ErrControlUnsupported
+		}
 	}
 	switch action {
 	case "volume_up", "volume_down":
@@ -114,7 +123,10 @@ func (s *protocolService) Control(ctx context.Context, action string) error {
 		err := owner.RemoteControl(local, action)
 		if err == nil && action == "pause" && owner.RemoteAvailable != nil && owner.RemoteAvailable() {
 			s.pausedMu.Lock()
-			s.pausedRemote = &pausedRemote{owner: owner, send: owner.RemoteControl, available: owner.RemoteAvailable}
+			_, currentClaim := s.player.Ownership()
+			if currentClaim == claimID {
+				s.pausedRemote = &pausedRemote{owner: owner, claimID: claimID, send: owner.RemoteControl, available: owner.RemoteAvailable}
+			}
 			s.pausedMu.Unlock()
 		}
 		return err

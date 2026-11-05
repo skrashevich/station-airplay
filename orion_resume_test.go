@@ -56,10 +56,13 @@ func TestResumeAfterPhoneTearsDownPausedAudio(t *testing.T) {
 }
 
 func TestNewSenderInvalidatesPausedRemote(t *testing.T) {
-	old := &audio.Server{}
-	replacement := &audio.Server{}
-	svc := &protocolService{pausedRemote: &pausedRemote{owner: old, available: func() bool { return true }}}
-	if svc.pausedSender(replacement) != nil || svc.pausedSender(nil) != nil {
+	svc, _, _ := retainedSenderFixture(t)
+	replacement := audio.NewServer(svc.player)
+	if _, err := replacement.Setup(make([]byte, 32), 44100); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { replacement.Close(); replacement.Wait() }()
+	if svc.pausedSender() != nil {
 		t.Fatal("old sender survived replacement")
 	}
 }

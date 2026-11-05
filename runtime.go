@@ -161,7 +161,7 @@ func openService(ctx context.Context, cfg settings) (_ service, failure error) {
 
 func (s *protocolService) Status() Status {
 	connected, playing := s.player.PlaybackState()
-	paused := s.pausedSender(s.player.Current())
+	paused := s.pausedSender()
 	connected = connected || paused != nil
 	return Status{Name: s.settings.name, Address: s.control.Addr().String(), Connected: connected, Playing: playing, VolumeDB: s.player.Volume()}
 }

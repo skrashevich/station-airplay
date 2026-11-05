@@ -24,6 +24,7 @@ type Player struct {
 	Timing      *ptp.Server
 	mu          sync.Mutex
 	owner       *Server
+	claimID     uint64
 	gain        atomic.Uint64
 	volume      atomic.Uint64
 }
@@ -39,7 +40,10 @@ func (p *Player) claim(s *Server) error {
 	if p.owner != nil && p.owner != s {
 		return fmt.Errorf("another sender owns audio")
 	}
-	p.owner = s
+	if p.owner != s {
+		p.claimID++
+		p.owner = s
+	}
 	if p.Timing != nil {
 		p.Timing.Bind(s, []net.IP{s.PeerIP})
 	}
@@ -65,9 +69,17 @@ func (p *Player) Volume() float64 { return math.Float64frombits(p.volume.Load())
 
 // Current returns the sender that owns this player's audio, if any.
 func (p *Player) Current() *Server {
+	owner, _ := p.Ownership()
+	return owner
+}
+
+// Ownership returns the audio owner and its claim generation together. Releasing
+// audio keeps the generation, so control may survive a partial teardown. A later
+// claim advances it even when that sender releases audio before the next query.
+func (p *Player) Ownership() (*Server, uint64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.owner
+	return p.owner, p.claimID
 }
 
 func (p *Player) PlaybackState() (connected, playing bool) {

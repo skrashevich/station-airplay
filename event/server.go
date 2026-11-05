@@ -26,12 +26,13 @@ var (
 const maxSessions = 8
 
 // Hub associates incoming event sockets with authenticated RTSP peers. Register
-// must precede advertising the event port to the sender. Each peer retains its
-// registration until its owning RTSP connection explicitly closes the Session.
+// must precede advertising the event port to the sender. An event EOF, command
+// failure, or the owning RTSP connection closes the Session and registration.
 type Hub struct {
 	mu       sync.Mutex
 	sessions map[string]*Session
 	closed   bool
+	readers  sync.WaitGroup
 }
 
 func NewHub() *Hub { return &Hub{sessions: make(map[string]*Session)} }
@@ -43,7 +44,7 @@ type Session struct {
 	peer    string
 	mu      sync.Mutex
 	conn    *encryptedConn
-	reader  *bufio.Reader
+	pending chan error
 	cipher  *eventCipher
 	groupID string
 	closed  bool
@@ -99,7 +100,7 @@ func (s *Session) Close() {
 	close(s.done)
 	c := s.conn
 	s.conn = nil
-	s.reader = nil
+	s.pending = nil
 	s.cipher = nil
 	s.groupID = ""
 	s.mu.Unlock()
@@ -137,11 +138,49 @@ func (h *Hub) attach(c net.Conn) {
 		c.Close()
 		return
 	}
-	s.conn = &encryptedConn{Conn: c, crypt: s.cipher}
+	conn := &encryptedConn{Conn: c, crypt: s.cipher}
+	s.conn = conn
 	s.cipher = nil
-	s.reader = bufio.NewReaderSize(s.conn, 4096)
 	s.mu.Unlock()
+	h.readers.Go(func() { s.readResponses(conn) })
 	h.mu.Unlock()
+}
+
+// One reader owns decryption and acknowledgment parsing for the entire socket
+// lifetime, including idle periods. An idle EOF invalidates Available without
+// requiring another command to discover it. Replies without an outstanding
+// command, or extra buffered replies, cannot satisfy a future command.
+func (s *Session) readResponses(c *encryptedConn) {
+	defer s.Close()
+	r := bufio.NewReaderSize(c, 4096)
+	for {
+		if _, err := r.Peek(1); err != nil {
+			return
+		}
+		s.mu.Lock()
+		pending, closed := s.pending, s.closed
+		s.mu.Unlock()
+		if closed || pending == nil {
+			return
+		}
+		err := readAcknowledgment(r)
+		if err == nil && r.Buffered() != 0 {
+			err = fmt.Errorf("unexpected data after event acknowledgment")
+		}
+		if err == nil {
+			// The next idle read must not inherit this command's deadline.
+			err = c.SetReadDeadline(time.Time{})
+		}
+		s.mu.Lock()
+		if s.pending == pending {
+			s.pending = nil
+			pending <- err
+		}
+		s.mu.Unlock()
+		if err != nil {
+			return
+		}
+	}
 }
 
 // Serve accepts only registered peers. Idle sockets have no read deadline:
@@ -161,6 +200,7 @@ func (h *Hub) Serve(ctx context.Context, l net.Listener) error {
 		for _, s := range sessions {
 			s.Close()
 		}
+		h.readers.Wait()
 	}()
 	for {
 		c, err := l.Accept()
@@ -250,8 +290,12 @@ func (s *Session) post(ctx context.Context, body []byte) (err error) {
 		return err
 	}
 	s.mu.Lock()
-	c, r := s.conn, s.reader
+	c := s.conn
 	closed := s.closed
+	ack := make(chan error, 1)
+	if !closed && c != nil {
+		s.pending = ack
+	}
 	s.mu.Unlock()
 	if closed || c == nil {
 		return ErrUnavailable
@@ -275,13 +319,26 @@ func (s *Session) post(ctx context.Context, body []byte) (err error) {
 	if err = c.SetDeadline(deadline); err != nil {
 		return err
 	}
-	defer c.SetDeadline(time.Time{})
+	defer c.SetWriteDeadline(time.Time{})
 	request := fmt.Appendf(nil, "POST /command RTSP/1.0\r\nContent-Length: %d\r\nContent-Type: application/x-apple-binary-plist\r\n\r\n", len(body))
 	request = append(request, body...)
 	if _, err = c.Write(request); err != nil {
 		return err
 	}
-	return readAcknowledgment(r)
+	select {
+	case err = <-ack:
+	case <-s.done:
+		// A sender may close immediately after its complete acknowledgment.
+		// Preserve that result even if both it and EOF are ready together.
+		select {
+		case err = <-ack:
+		default:
+			err = ErrUnavailable
+		}
+	case <-ctx.Done():
+		err = ctx.Err()
+	}
+	return err
 }
 func readAcknowledgment(r *bufio.Reader) error {
 	total := 0
