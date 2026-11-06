@@ -199,6 +199,7 @@ func (r *Rstp) attachRemote(s *audio.Server) {
 		return
 	}
 	s.RemoteControl = remote.Send
+	s.RemoteAvailable = remote.Available
 	s.NotifyVolume = func(ctx context.Context, db float64) error {
 		return remote.SetVolume(ctx, eventUnitVolume(db))
 	}

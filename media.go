@@ -7,6 +7,29 @@ import (
 	"math"
 )
 
+// A phone may tear down only its audio stream after a remote pause. Keep
+// control of that explicitly paused sender while its event channel is alive.
+type pausedRemote struct {
+	owner     *audio.Server
+	claimID   uint64
+	send      func(context.Context, string) error
+	available func() bool
+}
+
+func (s *protocolService) pausedSender() *pausedRemote {
+	s.pausedMu.Lock()
+	defer s.pausedMu.Unlock()
+	p := s.pausedRemote
+	if p != nil {
+		owner, claimID := s.player.Ownership()
+		if claimID != p.claimID || (owner != nil && owner != p.owner) || !p.available() {
+			s.pausedRemote = nil
+			return nil
+		}
+	}
+	return p
+}
+
 // Control sends a media command to the current sender, without disabling the
 // receiver. Source commands require a working encrypted event channel.
 func (r *Receiver) Control(ctx context.Context, action string) error {
@@ -61,9 +84,18 @@ func (s *protocolService) Control(ctx context.Context, action string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	owner := s.player.Current()
+	owner, claimID := s.player.Ownership()
+	paused := s.pausedSender()
 	if owner == nil {
-		return ErrNoSender
+		if paused == nil {
+			return ErrNoSender
+		}
+		switch action {
+		case "pause", "resume", "stop", "next", "previous", "restart":
+			return paused.send(ctx, action)
+		default:
+			return ErrControlUnsupported
+		}
 	}
 	switch action {
 	case "volume_up", "volume_down":
@@ -88,7 +120,16 @@ func (s *protocolService) Control(ctx context.Context, action string) error {
 		if owner.Context().Err() != nil {
 			return ErrNoSender
 		}
-		return owner.RemoteControl(local, action)
+		err := owner.RemoteControl(local, action)
+		if err == nil && action == "pause" && owner.RemoteAvailable != nil && owner.RemoteAvailable() {
+			s.pausedMu.Lock()
+			_, currentClaim := s.player.Ownership()
+			if currentClaim == claimID {
+				s.pausedRemote = &pausedRemote{owner: owner, claimID: claimID, send: owner.RemoteControl, available: owner.RemoteAvailable}
+			}
+			s.pausedMu.Unlock()
+		}
+		return err
 	default:
 		return ErrControlUnsupported
 	}

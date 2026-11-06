@@ -165,6 +165,9 @@ func listen(ctx context.Context, conn net.Conn, method int, logger *log.Logger, 
 			return err
 		}
 		out := cancelFrame(method)
+		if e.nativeEnvelope {
+			out = nativeCancelFrame(method)
+		}
 		for len(out) > 0 {
 			n, err := conn.Write(out)
 			if err != nil {
