@@ -375,11 +375,20 @@ func (s *Server) play() {
 		}
 		pcm, err := decoder.Decode(f.encodedData)
 		if err != nil {
-			s.player.Logf("audio decode: %v", err)
+			s.player.Logf("audio decode: sequence=%d timestamp=%d bytes=%d rate=%d: %v", f.SequenceNumber, f.Timestamp, len(f.encodedData), s.rate, err)
 			return
 		}
 		s.mu.Lock()
 		if !s.playing || s.generation != gen || s.buffer.Peek() != f || s.ctx.Err() != nil {
+			s.mu.Unlock()
+			continue
+		}
+		if len(pcm) == 0 {
+			// Empty AAC packets advance transport sequencing, not audio samples.
+			// Keep decoder history and avoid opening the native output for them.
+			s.buffer.Pop()
+			lastSeq, lastTimestamp = f.SequenceNumber, f.Timestamp
+			lastSamples, haveSeq = 0, true
 			s.mu.Unlock()
 			continue
 		}

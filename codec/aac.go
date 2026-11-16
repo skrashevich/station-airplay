@@ -34,6 +34,10 @@ func (d *AacDecoder) Decode(data []byte) (pcm []byte, err error) {
 	if d.decoder == nil {
 		return nil, fmt.Errorf("AAC is not configured")
 	}
+	// An empty AirPlay packet contains no access unit and must keep AAC history.
+	if len(data) == 0 {
+		return nil, nil
+	}
 	// A malformed network frame must not take down discovery/control services.
 	defer func() {
 		if v := recover(); v != nil {
