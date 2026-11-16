@@ -85,6 +85,15 @@ YAM_ROOT=$root "$payload/bin/station-airplay-postinstall" --test-root "$fixture"
 [ ! -e "$hook" ]
 mkdir -p "$fixture/system/vendor/quasar" "$fixture/etc/init.d"
 : > "$fixture/system/vendor/quasar/quasar.cfg"
+# Android must never attempt the Linux init.d/remount path, even with quasar.cfg.
+mkdir -p "$fixture/system/bin"
+for loader in linker64 linker; do
+    : > "$fixture/system/bin/$loader"
+    YAM_ROOT=$root "$payload/bin/station-airplay-postinstall" --test-root "$fixture"
+    [ ! -e "$hook" ]
+    assert_stopped
+    rm "$fixture/system/bin/$loader"
+done
 # Test the same installation branch and generated hook against an isolated /etc.
 YAM_ROOT=$root YAM_VAR=$root/var "$payload/bin/station-airplay-postinstall" --test-root "$fixture"
 wait_event 5

@@ -10,3 +10,6 @@ cucumber arm64
 yandexmidi arm64
 mango armv7
 orion arm64
+# Android ARM64 (experimental OpenSL ES backend)
+yandexstation arm64
+yandexstation_2 arm64

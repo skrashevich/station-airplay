@@ -37,7 +37,9 @@ jobs:
           workspaces: .yam-tools
       - name: Build pinned YAM tools
         run: cargo build --release --locked --manifest-path .yam-tools/Cargo.toml --bin yam-publish --bin yam
-      - name: Pack and verify all YAM profiles
+      - name: Validate Linux and Android YAM target coverage
+        run: python3 scripts/check-yam-targets.py --yam-source .yam-tools
+      - name: Pack and verify all Linux and Android YAM profiles
         env:
           VERSION: ${{ inputs.version }}
         run: |

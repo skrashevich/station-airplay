@@ -13,6 +13,12 @@ if [ "$mode" = --test-root ]; then
     mode=${3:-install}
 fi
 case "$mode" in install|--enable) ;; *) echo 'invalid postinstall mode' >&2; exit 2 ;; esac
+# Android uses its own init system, not the Buildroot /etc/init.d hook.
+# Match the receiver's Android detection, including 32-bit-only firmware.
+if [ -e "$prefix/system/bin/linker64" ] || [ -e "$prefix/system/bin/linker" ]; then
+    echo 'station-airplay: Android autostart is not configured; run station-airplay -check and start manually'
+    exit 0
+fi
 # Installing an ARM package with yam --root on a PC must not alter the host.
 if [ ! -f "$prefix/system/vendor/quasar/quasar.cfg" ]; then
     echo 'station-airplay: off-station install; autostart activation skipped'
