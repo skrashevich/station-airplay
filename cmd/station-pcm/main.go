@@ -1,5 +1,5 @@
 // station-pcm accepts the narrow raw-PCM command line used by station-airplay.
-// It runs separately so ALSA's dynamic loader cannot affect the static receiver or its embedding host.
+// It runs separately so the native loader cannot affect the static receiver or its embedding host.
 package main
 
 import (
@@ -40,13 +40,13 @@ func run(ctx context.Context, args []string, input io.Reader, output io.Writer, 
 	flags := flag.NewFlagSet("station-pcm", flag.ContinueOnError)
 	flags.SetOutput(output)
 	cfg := pcm.Config{}
-	flags.StringVar(&cfg.Device, "D", "default", "ALSA PCM name")
+	flags.StringVar(&cfg.Device, "D", "default", "PCM device (Android uses the default system mixer)")
 	flags.IntVar(&cfg.Rate, "r", 44100, "PCM sample rate (44100 or 48000)")
 	format := flags.String("f", "S16_LE", "sample format (S16_LE)")
 	channels := flags.Int("c", 2, "channels (2)")
 	fileType := flags.String("t", "raw", "input format (raw)")
 	flags.Bool("q", false, "accepted for compatibility; output is always quiet")
-	checkOnly := flags.Bool("check", false, "load ALSA and check symbols without opening a PCM")
+	checkOnly := flags.Bool("check", false, "check native audio symbols without opening a PCM")
 	version := flags.Bool("version", false, "print helper version")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -58,7 +58,7 @@ func run(ctx context.Context, args []string, input io.Reader, output io.Writer, 
 		return errors.New("only raw stereo S16_LE at 44100 or 48000 Hz is supported")
 	}
 	if *version {
-		_, err := fmt.Fprintln(output, "station-pcm (ALSA stereo S16_LE output)")
+		_, err := fmt.Fprintln(output, "station-pcm (native stereo S16_LE output)")
 		return err
 	}
 	if *checkOnly {

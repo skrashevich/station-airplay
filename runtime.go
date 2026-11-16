@@ -24,7 +24,7 @@ import (
 
 // CheckResult describes prerequisites without opening listeners or identity files.
 // It may create or repair the private PCM helper cache in DataDir.
-// Checking the owned output loads ALSA in a child process without opening a PCM.
+// Checking the owned output loads its native API in a child process without opening audio.
 type CheckResult struct {
 	Interface, IP, Aplay, Device, DataDir string
 	outputEnv                             []string
@@ -65,8 +65,8 @@ func environment(ctx context.Context, s settings) (net.Interface, CheckResult, e
 	return iface, result, ctx.Err()
 }
 
-// Only the bundled helper implements --check. It resolves the ALSA API without
-// opening a PCM; vendor dlopen constructors may still initialize library state.
+// Only the bundled helper implements --check. It resolves the native audio API without
+// opening audio; vendor dlopen constructors may still initialize library state.
 func checkOutput(ctx context.Context, command string, env []string) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

@@ -93,7 +93,14 @@ func Build(ctx context.Context, options Options) error {
 		if path == "" {
 			path = filepath.Join(stage, "station-pcm-"+arch)
 			// Full import path also resolves from an embedding application's vendor tree.
-			command := exec.CommandContext(ctx, "go", "build", "-trimpath", "-ldflags=-s -w -I "+loader, "-o", path, "github.com/skrashevich/station-airplay/cmd/station-pcm")
+			arguments := []string{"build", "-trimpath", "-ldflags=-s -w -I " + loader}
+			// ARM64 PIE runs under glibc unchanged and can be prepared for Bionic at
+			// runtime. Keep ARMv7's established linker mode for older Linux firmware.
+			if arch == "arm64" {
+				arguments = append(arguments, "-buildmode=pie")
+			}
+			arguments = append(arguments, "-o", path, "github.com/skrashevich/station-airplay/cmd/station-pcm")
+			command := exec.CommandContext(ctx, "go", arguments...)
 			command.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+goarch, "GOARM=7")
 			command.Stdout, command.Stderr = os.Stderr, os.Stderr
 			if err := command.Run(); err != nil {

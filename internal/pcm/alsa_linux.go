@@ -76,9 +76,12 @@ func load() (*alsa, error) {
 	return nil, fmt.Errorf("load ALSA: %w", failure)
 }
 
-// Check loads ALSA and verifies required entry points without opening a PCM.
-// Vendor library constructors may still run as part of dlopen.
+// Check verifies the selected native API without opening audio.
+// Library constructors may still run as part of dlopen.
 func Check() error {
+	if androidPCM() {
+		return checkOpenSL()
+	}
 	a, err := load()
 	if err != nil {
 		return err
@@ -87,6 +90,9 @@ func Check() error {
 }
 
 func Play(ctx context.Context, input io.Reader, cfg Config) error {
+	if androidPCM() {
+		return playOpenSL(ctx, input, cfg)
+	}
 	if cfg.Rate != 44100 && cfg.Rate != 48000 {
 		return errors.New("PCM rate must be 44100 or 48000 Hz")
 	}

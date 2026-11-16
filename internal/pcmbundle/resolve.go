@@ -55,6 +55,12 @@ func resolve(ctx context.Context, executable, dataDir string, selectNative func(
 	if err != nil || actual != arch {
 		return "", nil, errors.New("PCM helper ELF ABI differs from its manifest")
 	}
+	data, err = prepareNativeHelper(data, arch, env)
+	if err != nil {
+		return "", nil, err
+	}
+	nativeDigest := sha256.Sum256(data)
+	cacheKey := hex.EncodeToString(nativeDigest[:])
 	if dataDir == "" {
 		return "", nil, errors.New("private PCM data directory is required")
 	}
@@ -68,7 +74,7 @@ func resolve(ctx context.Context, executable, dataDir string, selectNative func(
 	if err = privateDir(root); err != nil {
 		return "", nil, err
 	}
-	directory := filepath.Join(root, helper.SHA256)
+	directory := filepath.Join(root, cacheKey)
 	if err = privateDir(directory); err != nil {
 		return "", nil, err
 	}

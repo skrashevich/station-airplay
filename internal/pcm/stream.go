@@ -1,4 +1,4 @@
-// Package pcm implements the small ALSA playback surface needed by AirPlay.
+// Package pcm implements the small native playback surface needed by AirPlay.
 // It is used only by the isolated station-pcm process, never by the static receiver or its embedding host.
 package pcm
 
@@ -26,7 +26,7 @@ type device interface {
 	err(int) error
 }
 
-// transfer keeps all ALSA calls on its caller's goroutine. Stop drops buffered
+// transfer keeps all native calls on its caller's goroutine. Stop drops buffered
 // audio; finite EOF drains it. Input must be closed by the caller on cancellation
 // if its Read can block (the command does this for stdin).
 func transfer(ctx context.Context, input io.Reader, d device) (result error) {
@@ -54,7 +54,7 @@ func transfer(ctx context.Context, input io.Reader, d device) (result error) {
 			written := d.write(data)
 			switch {
 			case written > len(data)/4:
-				return errors.New("ALSA returned an invalid frame count")
+				return errors.New("PCM backend returned an invalid frame count")
 			case written > 0:
 				data = data[written*4:]
 			case written == 0 || written == -int(syscall.EAGAIN):

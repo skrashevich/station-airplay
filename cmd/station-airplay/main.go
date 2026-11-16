@@ -25,7 +25,7 @@ func main() {
 	flag.StringVar(&cfg.ListenAddress, "listen", ":7000", "IPv4 RTSP address and port")
 	flag.StringVar(&cfg.DataDir, "data-dir", "/data/opt/station-airplay/state", "Persistent identity and pairing directory")
 	flag.StringVar(&cfg.Aplay, "aplay", "", "Custom aplay-compatible output (default: bundled station-pcm)")
-	flag.StringVar(&cfg.Device, "device", "default", "ALSA playback PCM")
+	flag.StringVar(&cfg.Device, "device", "default", "Playback device (ALSA PCM name; Android supports default)")
 	cfg.OutputDelay = flag.Duration("output-delay", 160*time.Millisecond, "Estimated audio output latency")
 	cfg.InitialVolumeDB = flag.Float64("volume", -20, "Initial AirPlay volume in dB")
 	check := flag.Bool("check", false, "Check prerequisites without opening listeners or audio")

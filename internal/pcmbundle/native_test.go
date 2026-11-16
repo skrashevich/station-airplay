@@ -32,7 +32,7 @@ func TestChildEnvironmentPreservesExplicitOverridesWithoutMutatingProcess(t *tes
 	t.Setenv("ALSA_CONFIG_DIR", "/custom/alsa")
 	env := childEnvironment("/chosen/lib/libasound.so.2")
 	joined := "\n" + strings.Join(env, "\n") + "\n"
-	if !strings.Contains(joined, "\nSTATION_PCM_LIBRARY=/chosen/lib/libasound.so.2\n") || !strings.Contains(joined, "\nLD_LIBRARY_PATH=/chosen/lib:/custom/lib\n") {
+	if !strings.Contains(joined, "\nSTATION_PCM_BACKEND=alsa\n") || !strings.Contains(joined, "\nSTATION_PCM_LIBRARY=/chosen/lib/libasound.so.2\n") || !strings.Contains(joined, "\nLD_LIBRARY_PATH=/chosen/lib:/custom/lib\n") {
 		t.Fatal(env)
 	}
 	for _, item := range env {
