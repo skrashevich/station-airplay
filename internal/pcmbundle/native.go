@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -23,6 +24,12 @@ func libraryABI(path string) (string, error) {
 }
 func nativeEnvironment() (string, []string, error) {
 	override := os.Getenv("STATION_PCM_LIBRARY")
+	if _, err := os.Stat("/system/bin/linker64"); !errors.Is(err, os.ErrNotExist) {
+		return androidNativeEnvironment("/", runtime.GOARCH, override)
+	}
+	if _, err := os.Stat("/system/bin/linker"); !errors.Is(err, os.ErrNotExist) {
+		return "", nil, errors.New("Android PCM currently requires ARM64 Android with linker64")
+	}
 	name := "libasound.so.2"
 	if override != "" {
 		name = override
@@ -72,7 +79,7 @@ func childEnvironment(library string) []string {
 	if existing := os.Getenv("LD_LIBRARY_PATH"); existing != "" {
 		search += string(os.PathListSeparator) + existing
 	}
-	env := []string{"STATION_PCM_LIBRARY=" + library, "LD_LIBRARY_PATH=" + search}
+	env := []string{"STATION_PCM_BACKEND=alsa", "STATION_PCM_LIBRARY=" + library, "LD_LIBRARY_PATH=" + search}
 	// Keep explicit config overrides, including intentionally empty values. On
 	// the Linkplay firmware the copied /tmp/alsa config remains selected by this
 	// main config's hooks; no system config or mixer is modified.
@@ -85,4 +92,32 @@ func childEnvironment(library string) []string {
 		}
 	}
 	return env
+}
+
+func androidNativeEnvironment(root, hostArch, override string) (string, []string, error) {
+	if hostArch != "arm64" {
+		return "", nil, errors.New("Android PCM currently requires an ARM64 host")
+	}
+	loader := filepath.Join(root, "system/bin/linker64")
+	library := filepath.Join(root, "system/lib64/libOpenSLES.so")
+	if override != "" {
+		library = override
+	}
+	libraryArch, err := libraryABI(library)
+	if err != nil || libraryArch != "arm64" {
+		return "", nil, errors.New("Android PCM needs an ARM64 OpenSL ES system library")
+	}
+	loaderArch, err := libraryABI(loader)
+	if err != nil || loaderArch != "arm64" {
+		return "", nil, errors.New("Android PCM needs a compatible linker64")
+	}
+	absolute, err := filepath.Abs(library)
+	if err != nil {
+		return "", nil, err
+	}
+	search := filepath.Dir(absolute)
+	if existing := os.Getenv("LD_LIBRARY_PATH"); existing != "" {
+		search += string(os.PathListSeparator) + existing
+	}
+	return "arm64", []string{"STATION_PCM_BACKEND=opensl", "STATION_PCM_LIBRARY=" + absolute, "LD_LIBRARY_PATH=" + search}, nil
 }
