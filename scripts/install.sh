@@ -44,7 +44,7 @@ if [ "$uninstall" -eq 1 ];then
  rm -f "$prefix/bin/station-airplay" "$prefix/bin/station-pcm" "$prefix/bin/station-pcm-armv7" "$prefix/bin/station-pcm-arm64" "$prefix/service" "$prefix/receiver.pid" "$prefix/receiver.log"
  rmdir "$prefix/bin" 2>/dev/null || true
  if [ "$purge" -eq 1 ];then
-  rm -rf "$prefix/state"
+  rm -rf "${prefix:?}/state"
   rm -f "$prefix/name" "$prefix/interface" "$prefix/device" "$prefix/aplay" "$marker"
   rmdir "$prefix" 2>/dev/null || true
  fi
@@ -76,7 +76,7 @@ cleanup() {
  trap - EXIT HUP INT TERM
  if [ "$result" -ne 0 ] && [ "$switched" -eq 1 ]; then
   "$prefix/service" stop || true
-  rm -rf "$prefix/bin"
+  rm -rf "${prefix:?}/bin"
   if [ "$had_bin" -eq 1 ]; then mv "$stage/old-bin" "$prefix/bin"; fi
   for file in service name interface device aplay; do
    if [ -f "$stage/old/$file" ]; then cp -p "$stage/old/$file" "$prefix/$file"; else rm -f "$prefix/$file"; fi

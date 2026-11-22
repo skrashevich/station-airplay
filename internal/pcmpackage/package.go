@@ -35,10 +35,7 @@ func Build(ctx context.Context, options Options) error {
 	if options.Binary == "" {
 		return fmt.Errorf("input executable is required")
 	}
-	if err := validateELF(options.Binary, options.Arch); err != nil {
-		return err
-	}
-	input, err := os.Open(options.Binary)
+	input, err := openELF(options.Binary, options.Arch)
 	if err != nil {
 		return err
 	}
@@ -59,11 +56,11 @@ func Build(ctx context.Context, options Options) error {
 		return err
 	}
 	defer os.RemoveAll(stage)
-	executable := filepath.Join(stage, "receiver")
-	copied, err := os.OpenFile(executable, os.O_CREATE|os.O_EXCL|os.O_WRONLY, info.Mode().Perm())
+	copied, err := os.CreateTemp(stage, "receiver-*")
 	if err != nil {
 		return err
 	}
+	executable := copied.Name()
 	_, copyErr := io.Copy(copied, input)
 	inputCloseErr := input.Close()
 	closeErr := copied.Close()
@@ -107,10 +104,12 @@ func Build(ctx context.Context, options Options) error {
 				return fmt.Errorf("build %s helper: %w", arch, err)
 			}
 		}
-		if err := validateELF(path, arch); err != nil {
+		helper, err := openELF(path, arch)
+		if err != nil {
 			return err
 		}
-		data, err := os.ReadFile(path)
+		data, err := io.ReadAll(helper)
+		helper.Close()
 		if err != nil {
 			return err
 		}
@@ -139,23 +138,26 @@ func Build(ctx context.Context, options Options) error {
 	return os.Rename(executable, output)
 }
 
-func validateELF(path, arch string) error {
+// Inputs are CLI-selected files or helpers built in the private staging directory.
+// Return the validated descriptor so packaging never reopens the path.
+func openELF(path, arch string) (*os.File, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer file.Close()
 	header := make([]byte, 20)
-	_, err = io.ReadFull(file, header)
+	_, err = file.ReadAt(header, 0)
 	if err != nil || string(header[:4]) != "\x7fELF" || header[5] != 1 {
-		return fmt.Errorf("%s is not a little-endian Linux ELF", filepath.Base(path))
+		file.Close()
+		return nil, fmt.Errorf("%s is not a little-endian Linux ELF", filepath.Base(path))
 	}
 	class, machine := byte(1), uint16(40)
 	if arch == "arm64" {
 		class, machine = 2, 183
 	}
 	if header[4] != class || binary.LittleEndian.Uint16(header[18:]) != machine {
-		return fmt.Errorf("%s has a different ELF architecture than %s", filepath.Base(path), arch)
+		file.Close()
+		return nil, fmt.Errorf("%s has a different ELF architecture than %s", filepath.Base(path), arch)
 	}
-	return nil
+	return file, nil
 }
