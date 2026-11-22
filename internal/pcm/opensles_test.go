@@ -10,7 +10,6 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -24,8 +23,9 @@ func queueFixture(t *testing.T) (*openSLDevice, *uint32, *[][]byte) {
 	t.Cleanup(func() { _ = unix.Munmap(memory) })
 	count, received := new(uint32), new([][]byte)
 	d := &openSLDevice{memory: memory, state: func(state *slQueueState) uint32 { state.Count = *count; return 0 },
-		enqueue: func(data unsafe.Pointer, length uint32) uint32 {
-			*received = append(*received, bytes.Clone(unsafe.Slice((*byte)(data), int(length))))
+		enqueue: func(data []byte) uint32 {
+			// OpenSL retains this address until the queue consumes the buffer.
+			*received = append(*received, data)
 			*count++
 			return 0
 		}, play: func(uint32) uint32 { return 0 }, clear: func() uint32 { *count = 0; return 0 }}
@@ -46,7 +46,9 @@ func TestOpenSLQueueRetainsPCMAndWaitsForFreeSlots(t *testing.T) {
 		t.Fatalf("full queue was overwritten: written=%d", written)
 	}
 	for i, value := range []byte{1, 2, 3} {
-		if !bytes.Equal(d.memory[i*4096:(i+1)*4096], bytes.Repeat([]byte{value}, 4096)) {
+		queued := (*received)[i]
+		if len(queued) != slBufferSize || &queued[0] != &d.memory[i*slBufferSize] ||
+			!bytes.Equal(queued, bytes.Repeat([]byte{value}, slBufferSize)) {
 			t.Fatal("native queue did not retain its PCM buffer")
 		}
 	}
@@ -114,7 +116,7 @@ func TestOpenSLPropagatesNativeErrors(t *testing.T) {
 			case "state":
 				d.state = func(*slQueueState) uint32 { return 13 }
 			case "enqueue":
-				d.enqueue = func(unsafe.Pointer, uint32) uint32 { return 13 }
+				d.enqueue = func([]byte) uint32 { return 13 }
 			case "play":
 				d.play = func(uint32) uint32 { return 13 }
 				if d.write([]byte{1, 2, 3, 4}) != 1 {
