@@ -209,9 +209,10 @@ sh scripts/install.sh --uninstall --purge
 
 ## Сборка и тестирование
 
-Go 1.26 или новее:
+Для локальной сборки с той же версией Go, что и в CI, выполните команды ниже.
 
 ```sh
+export GOTOOLCHAIN=go1.26.11
 CGO_ENABLED=0 go test ./...
 go test -race ./...
 CGO_ENABLED=0 go vet ./...
