@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"syscall"
 	"time"
-	"unsafe"
 
 	"github.com/ebitengine/purego"
 	"golang.org/x/sys/unix"
@@ -27,7 +27,7 @@ type openSLDevice struct {
 	running bool
 	failure error
 	state   func(*slQueueState) uint32
-	enqueue func(unsafe.Pointer, uint32) uint32
+	enqueue func([]byte) uint32
 	play    func(uint32) uint32
 	clear   func() uint32
 }
@@ -56,7 +56,7 @@ func (d *openSLDevice) write(data []byte) int {
 	length := min(len(data), slBufferSize)
 	buffer := d.memory[d.next*slBufferSize : d.next*slBufferSize+length]
 	copy(buffer, data[:length])
-	if code := d.enqueue(unsafe.Pointer(unsafe.SliceData(buffer)), uint32(length)); code != 0 {
+	if code := d.enqueue(buffer); code != 0 {
 		d.failure = slError("enqueue PCM", code)
 		return -int(syscall.EIO)
 	}
@@ -125,38 +125,6 @@ func androidPCM() bool {
 	return library == nil && linker == nil
 }
 
-type openSL struct {
-	library, create, engineID, playID, queueID uintptr
-}
-
-func loadOpenSL() (*openSL, error) {
-	path := os.Getenv("STATION_PCM_LIBRARY")
-	if path == "" {
-		path = "libOpenSLES.so"
-	}
-	handle, err := purego.Dlopen(path, purego.RTLD_NOW|purego.RTLD_LOCAL)
-	if err != nil {
-		return nil, fmt.Errorf("load OpenSL ES: %w", err)
-	}
-	a := &openSL{library: handle}
-	for _, symbol := range []struct {
-		name string
-		out  *uintptr
-		data bool
-	}{{"slCreateEngine", &a.create, false}, {"SL_IID_ENGINE", &a.engineID, true}, {"SL_IID_PLAY", &a.playID, true}, {"SL_IID_ANDROIDSIMPLEBUFFERQUEUE", &a.queueID, true}} {
-		address, err := purego.Dlsym(handle, symbol.name)
-		if err != nil {
-			purego.Dlclose(handle)
-			return nil, fmt.Errorf("OpenSL ES symbol %s: %w", symbol.name, err)
-		}
-		if symbol.data {
-			address = *(*uintptr)(nativePointer(address))
-		}
-		*symbol.out = address
-	}
-	return a, nil
-}
-
 func checkOpenSL() error {
 	a, err := loadOpenSL()
 	if err != nil {
@@ -167,22 +135,6 @@ func checkOpenSL() error {
 
 func slError(step string, result uint32) error {
 	return fmt.Errorf("OpenSL ES %s failed (result %d)", step, result)
-}
-
-// Native interface/data addresses refer to dlopen mappings or mmap storage,
-// never to Go heap objects. Reinterpret the address without pointer arithmetic
-// on Go allocations; the owning library/mapping outlives every native call.
-func nativePointer(address uintptr) unsafe.Pointer {
-	return *(*unsafe.Pointer)(unsafe.Pointer(&address))
-}
-
-// OpenSL interfaces are pointers to vtable pointers, not vtable pointers.
-// Every OpenSL argument/result here is an integer or native pointer (no floats).
-func slMethod(object uintptr, slot int, arguments ...uintptr) uint32 {
-	table := *(*unsafe.Pointer)(nativePointer(object))
-	function := *(*uintptr)(unsafe.Add(table, uintptr(slot)*unsafe.Sizeof(uintptr(0))))
-	result, _, _ := purego.SyscallN(function, append([]uintptr{object}, arguments...)...)
-	return uint32(result)
 }
 
 func playOpenSL(ctx context.Context, input io.Reader, cfg Config) error {
@@ -200,83 +152,67 @@ func playOpenSL(ctx context.Context, input io.Reader, cfg Config) error {
 		return err
 	}
 	defer purego.Dlclose(a.library)
-	// Keep both retained PCM buffers and all ABI descriptors outside the Go
-	// heap. OpenSL may read them asynchronously after a purego call returns.
-	memory, err := unix.Mmap(-1, 0, slBuffers*slBufferSize+512, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_PRIVATE|unix.MAP_ANON)
+	memory, err := unix.Mmap(-1, 0, slBuffers*slBufferSize, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_PRIVATE|unix.MAP_ANON)
 	if err != nil {
 		return fmt.Errorf("allocate native PCM: %w", err)
 	}
 	defer unix.Munmap(memory)
-	address := func(offset int) uintptr {
-		return uintptr(unsafe.Pointer(unsafe.SliceData(memory))) + uintptr(slBuffers*slBufferSize+offset)
+
+	var engine, mixer, player slObject
+	if code := a.create(&engine, 0, 0, 0, nil, nil); code != 0 {
+		return slError("create engine", code)
 	}
-	word := func(offset int) uintptr { return *(*uintptr)(nativePointer(address(offset))) }
-	var engine, mixer, player uintptr
-	d := &openSLDevice{memory: memory[:slBuffers*slBufferSize]}
-	defer func() {
-		d.drop()
-		for _, object := range []uintptr{player, mixer, engine} {
-			if object != 0 {
-				slMethod(object, 6) // SLObjectItf.Destroy, before unmapping buffers.
-			}
-		}
-	}()
-	result, _, _ := purego.SyscallN(a.create, address(0), 0, 0, 0, 0, 0)
-	if result != 0 {
-		return slError("create engine", uint32(result))
-	}
-	engine = word(0)
-	if code := slMethod(engine, 0, 0); code != 0 {
+	defer slDestroy(engine)
+	if code := slRealize(engine); code != 0 {
 		return slError("realize engine", code)
 	}
-	if code := slMethod(engine, 3, a.engineID, address(0)); code != 0 {
+	engineAPI, code := slGetInterface[slEngineMethods](engine, a.engineID)
+	if code != 0 {
 		return slError("engine interface", code)
 	}
-	engineAPI := word(0)
-	if code := slMethod(engineAPI, 7, address(0), 0, 0, 0); code != 0 {
+	createMixer := slBind[func(slEngine, *slObject, uint32, *slID, *uint32) uint32](engineAPI.methods.createOutputMix)
+	if code := createMixer(engineAPI, &mixer, 0, nil, nil); code != 0 {
 		return slError("create mixer", code)
 	}
-	mixer = word(0)
-	if code := slMethod(mixer, 0, 0); code != 0 {
+	defer slDestroy(mixer)
+	if code := slRealize(mixer); code != 0 {
 		return slError("realize mixer", code)
 	}
-	*(*[2]uint32)(nativePointer(address(32))) = [2]uint32{0x800007bd, slBuffers}
-	*(*[7]uint32)(nativePointer(address(48))) = [7]uint32{2, 2, uint32(cfg.Rate) * 1000, 16, 16, 3, 2}
-	*(*struct {
-		kind uint32
-		mix  uintptr
-	})(nativePointer(address(80))) = struct {
-		kind uint32
-		mix  uintptr
-	}{4, mixer}
-	*(*[2]uintptr)(nativePointer(address(96))) = [2]uintptr{address(32), address(48)}
-	*(*[2]uintptr)(nativePointer(address(112))) = [2]uintptr{address(80), 0}
-	*(*uintptr)(nativePointer(address(128))) = a.queueID
-	*(*uint32)(nativePointer(address(144))) = 1
-	if code := slMethod(engineAPI, 2, address(0), address(96), address(112), 1, address(128), address(144)); code != 0 {
+
+	// The source and sink point into this single allocation or into OpenSL.
+	// Pin the whole descriptor graph until the player has been destroyed.
+	desc := newSLDescriptors(cfg.Rate, mixer, a.queueID)
+	var pinned runtime.Pinner
+	pinned.Pin(desc)
+	defer pinned.Unpin()
+	createPlayer := slBind[func(slEngine, *slObject, *slDataSource, *slDataSink, uint32, *slID, *uint32) uint32](engineAPI.methods.createAudioPlayer)
+	if code := createPlayer(engineAPI, &player, &desc.source, &desc.sink, 1, &desc.queueID, &desc.required); code != 0 {
 		return slError("create player", code)
 	}
-	player = word(0)
-	if code := slMethod(player, 0, 0); code != 0 {
+	defer slDestroy(player)
+	if code := slRealize(player); code != 0 {
 		return slError("realize player", code)
 	}
-	if code := slMethod(player, 3, a.playID, address(0)); code != 0 {
+	play, code := slGetInterface[slPlayMethods](player, a.playID)
+	if code != 0 {
 		return slError("play interface", code)
 	}
-	play := word(0)
-	d.play = func(state uint32) uint32 { return slMethod(play, 0, uintptr(state)) }
-	if code := slMethod(player, 3, a.queueID, address(0)); code != 0 {
+	queue, code := slGetInterface[slQueueMethods](player, a.queueID)
+	if code != 0 {
 		return slError("queue interface", code)
 	}
-	queue := word(0)
-	d.state = func(state *slQueueState) uint32 {
-		code := slMethod(queue, 2, address(16))
-		*state = *(*slQueueState)(nativePointer(address(16)))
-		return code
+
+	setState := slBind[func(slPlay, uint32) uint32](play.methods.setPlayState)
+	getState := slBind[func(slQueue, *slQueueState) uint32](queue.methods.getState)
+	enqueue := slBind[func(slQueue, []byte, uint32) uint32](queue.methods.enqueue)
+	clearQueue := slBind[func(slQueue) uint32](queue.methods.clear)
+	d := &openSLDevice{
+		memory:  memory,
+		play:    func(state uint32) uint32 { return setState(play, state) },
+		state:   func(state *slQueueState) uint32 { return getState(queue, state) },
+		enqueue: func(data []byte) uint32 { return enqueue(queue, data, uint32(len(data))) },
+		clear:   func() uint32 { return clearQueue(queue) },
 	}
-	d.enqueue = func(data unsafe.Pointer, length uint32) uint32 {
-		return slMethod(queue, 0, uintptr(data), uintptr(length))
-	}
-	d.clear = func() uint32 { return slMethod(queue, 1) }
+	defer d.drop()
 	return transfer(ctx, input, d)
 }

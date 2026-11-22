@@ -11,7 +11,6 @@ import (
 	"runtime"
 	"syscall"
 	"time"
-	"unsafe"
 
 	"github.com/ebitengine/purego"
 )
@@ -24,7 +23,7 @@ type alsa struct {
 	library    uintptr
 	open       func(*uintptr, string, int32, int32) int32
 	setParams  func(uintptr, int32, int32, uint32, uint32, int32, uint32) int32
-	writei     func(uintptr, unsafe.Pointer, uintptr) int
+	writei     func(uintptr, []byte, uintptr) int
 	waitPCM    func(uintptr, int32) int32
 	recoverPCM func(uintptr, int32, int32) int32
 	drainPCM   func(uintptr) int32
@@ -130,7 +129,7 @@ type alsaDevice struct {
 }
 
 func (d *alsaDevice) write(p []byte) int {
-	n := d.api.writei(d.handle, unsafe.Pointer(unsafe.SliceData(p)), uintptr(len(p)/4))
+	n := d.api.writei(d.handle, p, uintptr(len(p)/4))
 	runtime.KeepAlive(p)
 	return n
 }
